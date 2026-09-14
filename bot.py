@@ -12,7 +12,7 @@ logging.basicConfig(
 )
 
 # توکن ربات روبو الوند
-TOKEN = "8476770838:AAEmzE44g7e14jU3N3300Y80qZ7o0qR9J4M"
+TOKEN = '8833221517:AAHfq4qVa_hJet60QnyG-p-yRyXuTN4jLWE'
 
 # وب سرور Flask
 app = Flask(__name__)
