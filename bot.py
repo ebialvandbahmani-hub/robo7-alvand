@@ -1,47 +1,53 @@
-import os
-from threading import Thread
-from flask import Flask
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+import logging
+import sqlite3
+from telegram import Update
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
 TOKEN = "8833221517:AAHfq4qVa_hJet60QnyG-p-yRyXuTN4jLWE"
 
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Robo Alvand is Online and Active!"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+def init_db():
+    conn = sqlite3.connect("robo7alvand.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            message TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton(":bar_chart: تحلیل تکنیکال", callback_data="tech")],
-        [InlineKeyboardButton(":moneybag: واچ‌لیست و طلا/نقره", callback_data="watchlist")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "سلام ابی عزیز! خوش اومدی به روبو الوند :rocket:\nیکی از گزینه‌های زیر رو انتخاب کن:",
-        reply_markup=reply_markup
-    )
+    user_name = update.effective_user.first_name
+    welcome_text = f"سلام {user_name} عزیز!\nبه ربات روبو۷ الوند خوش آمدید.\nسیستم آماده و عملیاتی است."
+    await update.message.reply_text(welcome_text)
 
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    if query.data == "tech":
-        await query.edit_message_text(":bar_chart: بخش تحلیل تکنیکال به زودی فعال می‌شود.")
-    elif query.data == "watchlist":
-        await query.edit_message_text(":moneybag: واچ‌لیست و قیمت‌ها در حال اتصال هستند.")
-
-if __name__ == '__main__':
-    t = Thread(target=run_flask)
-    t.daemon = True
-    t.start()
-
-    application = ApplicationBuilder().token(TOKEN).build()
-    application.add_handler(CommandHandler('start', start))
-    application.add_handler(CallbackQueryHandler(button_callback))
+async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
     
-    application.run_polling(drop_pending_updates=True)
+    if text == "وضعیت":
+        await update.message.reply_text("سیستم پایدار و در حال سرویس‌دهی است.")
+    elif text == "ارتباط با مدیر":
+        await update.message.reply_text("مدیریت انبار لوازم یدکی (ابی) در دسترس است.")
+    else:
+        await update.message.reply_text(f"پیام شما دریافت شد: {text}\nلطفاً یک گزینه معتبر انتخاب کنید.")
+
+def main():
+    init_db()
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_messages))
+
+    print("Robot Robo7Alvand is running...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
