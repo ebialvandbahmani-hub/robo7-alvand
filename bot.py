@@ -13,7 +13,7 @@ logging.basicConfig(
 )
 
 # ---------- وب‌سرور سلامت برای Render ----------
-flask_app = Flask(name)
+flask_app = Flask(__name__)
 
 @flask_app.route("/")
 def health():
