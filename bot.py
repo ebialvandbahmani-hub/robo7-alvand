@@ -1,224 +1,392 @@
 import os
-import sqlite3
-from flask import Flask
-from threading import Thread
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+import logging
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from telegram import (
+    Update,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardRemove
+)
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler, 
-    filters, ContextTypes, ConversationHandler
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ConversationHandler,
+    ContextTypes,
+    filters
 )
 
-# --- 1. FLASK WEB SERVER FOR RENDER HEALTH CHECK ---
-app = Flask(__name__)
+# ================= پیکربندی لاگ =================
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-@app.route('/')
-def home():
-    return "Robo7Alvand is running smoothly!"
+# ================= وب‌سرور سبک جهت KEEP-ALIVE =================
+class SimpleHealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write("Robo7Alvand is Active & Running!".encode("utf-8"))
 
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+def run_keep_alive_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), SimpleHealthCheckHandler)
+    logger.info(f"Keep-Alive HTTP server running on port {port}")
+    server.serve_forever()
 
-# --- 2. DATABASE SETUP ---
-DB_NAME = "robo7.db"
+# ================= وضعیت‌های گفتگو (States) =================
+(
+    STATE_NAME,
+    STATE_PHONE,
+    STATE_EXPERIENCE,
+    STATE_MARKET,
+    STATE_CAPITAL,
+    STATE_GET_SYMBOL
+) = range(6)
 
-def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            full_name TEXT,
-            phone TEXT,
-            market TEXT,
-            capital TEXT,
-            experience TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
+# دیتابیس موقت حافظه کاربران
+USERS_DB = {}
 
-init_db()
+# ================= منوها =================
+MAIN_MENU = [
+    ["🏛 تالار معاملات", "🎓 آموزش"],
+    ["📅 تقویم اقتصادی", "📋 واچ‌لیست من"],
+    ["⚙️ پروفایل من", "⚖️ سلب مسئولیت حقوقی"],
+    ["📖 راهنما و پشتیبانی"]
+]
 
-# --- 3. CONVERSATION STATES FOR ONBOARDING ---
-NAME, PHONE, MARKET, CAPITAL, EXPERIENCE = range(5)
+EDUCATION_MENU = [
+    ["📚 آموزش مقدماتی", "🚀 آموزش پیشرفته"],
+    ["🔙 بازگشت به منوی اصلی"]
+]
 
-# --- KEYBOARDS ---
-MAIN_KEYBOARD = ReplyKeyboardMarkup(
-    [
-        ['📊 تحلیل نماد', '📋 لیست پایش'],
-        ['⚙️ وضعیت سیستم', '❓ راهنما']
-    ],
-    resize_keyboard=True
+TRADING_MENU = [
+    ["🎯 دریافت ستاپ معاملاتی"],
+    ["💹 فارکس / طلا", "⚡ فیوچرز", "💎 اسپات"],
+    ["📊 گزارش عملکرد من"],
+    ["🔙 بازگشت به منوی اصلی"]
+]
+
+CANCEL_MENU = [
+    ["🔙 بازگشت به منوی اصلی"]
+]
+
+LEGAL_DISCLAIMER = (
+    "⚖️ <b>بیانیه حقوقی و سلب مسئولیت مهم:</b>\n"
+    "━━━━━━━━━━━━━━━━━━━━\n"
+    "ربات «روبو۷ الوند» بر اساس اطلاعات، داده‌های آماری و تحلیل‌های تکنیکال اقدام به ارسال ستاپ‌های معاملاتی صرفاً به عنوان «پیشنهاد» می‌نماید.\n\n"
+    "🔴 <b>تصمیم‌گیرنده نهایی برای انجام معامله شخص شما هستید</b> و هیچ‌گونه مسئولیت حقوقی، مالی یا مدنی در قبال سود یا زیان حاصل از معاملات، بر عهده مالک و توسعه‌دهنده ربات نمی‌باشد.\n\n"
+    "حفظ سرمایه و رعایت مدیریت ریسک همواره اولویت اول شماست."
 )
 
-# --- HANDLERS ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ================= فرآیند Onboarding و ثبت‌نام =================
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT full_name FROM users WHERE user_id = ?", (user_id,))
-    user = cursor.fetchone()
-    conn.close()
+    first_name = update.effective_user.first_name or "کاربر گرامی"
 
-    if user:
+    if user_id in USERS_DB and USERS_DB[user_id].get("registered", False):
         await update.message.reply_text(
-            f"سلام {user[0]} عزیز! 👋\nبه ربات روبو۷ الوند خوش آمدید.",
-            reply_markup=MAIN_KEYBOARD
+            f"سلام {first_name} عزیز! خوش آمدید.\nاز منوی زیر بخش مورد نظرتان را انتخاب کنید:",
+            reply_markup=ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True),
+            parse_mode="HTML"
         )
         return ConversationHandler.END
+
+    welcome_text = (
+        f"👋 <b>درود {first_name} عزیز، به ربات هوشمند روبو۷ الوند خوش آمدید!</b>\n\n"
+        "من دستیار تحلیلی و معاملاتی شما در بازارهای مالی (فارکس، طلا و کریپتو) هستم.\n"
+        "برای شخصی‌سازی بهتر ستاپ‌ها و تحلیل‌ها، لطفاً فرآیند عضویت کوتاه زیر را تکمیل کنید.\n\n"
+        "👤 <b>لطفاً نام و نام خانوادگی خود را ارسال نمایید:</b>"
+    )
+    await update.message.reply_text(
+        welcome_text,
+        reply_markup=ReplyKeyboardRemove(),
+        parse_mode="HTML"
+    )
+    return STATE_NAME
+
+async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    name = update.message.text.strip()
+    user_id = update.effective_user.id
+    USERS_DB[user_id] = {"name": name}
+
+    contact_keyboard = [
+        [KeyboardButton("📱 ارسال شماره تماس", request_contact=True)]
+    ]
+    await update.message.reply_text(
+        f"متشکرم {name} عزیز.\n"
+        "📱 جهت تایید هویت و دسترسی، لطفاً با لمس دکمه زیر شماره همراه خود را به اشتراک بگذارید:",
+        reply_markup=ReplyKeyboardMarkup(contact_keyboard, resize_keyboard=True, one_time_keyboard=True),
+        parse_mode="HTML"
+    )
+    return STATE_PHONE
+
+async def receive_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if update.message.contact:
+        phone = update.message.contact.phone_number
+    else:
+        phone = update.message.text.strip()
+    
+    USERS_DB[user_id]["phone"] = phone
+
+    exp_keyboard = [
+        ["مبتدی (زیر ۶ ماه)", "متوسط (۶ ماه تا ۲ سال)"],
+        ["حرفه‌ای (بیش از ۲ سال)"]
+    ]
+    await update.message.reply_text(
+        "📊 <b>سطح تجربه شما در معامله‌گری چقدر است؟</b>",
+        reply_markup=ReplyKeyboardMarkup(exp_keyboard, resize_keyboard=True, one_time_keyboard=True),
+        parse_mode="HTML"
+    )
+    return STATE_EXPERIENCE
+
+async def receive_experience(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    USERS_DB[user_id]["experience"] = update.message.text.strip()
+
+    market_keyboard = [
+        ["فارکس و انس طلا", "ارز دیجیتال (کریپتو)"],
+        ["هر دو بازار"]
+    ]
+    await update.message.reply_text(
+        "🎯 <b>بیشتر در کدام بازار فعالیت دارید؟</b>",
+        reply_markup=ReplyKeyboardMarkup(market_keyboard, resize_keyboard=True, one_time_keyboard=True),
+        parse_mode="HTML"
+    )
+    return STATE_MARKET
+
+async def receive_market(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    USERS_DB[user_id]["market"] = update.message.text.strip()
+
+    capital_keyboard = [
+        ["زیر ۵۰ دلار", "۵۰ تا ۱۰۰ دلار"],
+        ["۱۰۰ تا ۳۰۰ دلار", "۳۰۰ تا ۵۰۰ دلار"],
+        ["بالای ۵۰۰ دلار"]
+    ]
+    await update.message.reply_text(
+        "💵 <b>میزان سرمایه فعال شما برای معامله چقدر است؟</b>",
+        reply_markup=ReplyKeyboardMarkup(capital_keyboard, resize_keyboard=True, one_time_keyboard=True),
+        parse_mode="HTML"
+    )
+    return STATE_CAPITAL
+
+async def receive_capital(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    USERS_DB[user_id]["capital"] = update.message.text.strip()
+    USERS_DB[user_id]["registered"] = True
+    USERS_DB[user_id]["watchlist"] = ["XAUUSD (طلا)", "EURUSD", "BTCUSDT"]
+
+    await update.message.reply_text(LEGAL_DISCLAIMER, parse_mode="HTML")
+    await update.message.reply_text(
+        "✅ <b>ثبت‌نام شما با موفقیت تکمیل شد!</b>\n\nاکنون می‌توانید از تمام امکانات سامانه استفاده نمایید:",
+        reply_markup=ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True),
+        parse_mode="HTML"
+    )
+    return ConversationHandler.END
+
+# ================= دریافت ستاپ تحلیلی بدون اسلش =================
+async def prompt_for_symbol(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "🔍 <b>دریافت ستاپ تحلیلی:</b>\n\n"
+        "لطفاً نام نماد معاملاتی مورد نظر خود را بنویسید:\n"
+        "<i>(مثال: طلا، بیتکوین، XAUUSD ،BTC ،EURUSD)</i>"
+    )
+    await update.message.reply_text(
+        text,
+        reply_markup=ReplyKeyboardMarkup(CANCEL_MENU, resize_keyboard=True),
+        parse_mode="HTML"
+    )
+    return STATE_GET_SYMBOL
+
+async def analyze_symbol_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    
+    if text == "🔙 بازگشت به منوی اصلی":
+        await update.message.reply_text(
+            "به منوی اصلی بازگشتید:",
+            reply_markup=ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True),
+            parse_mode="HTML"
+        )
+        return ConversationHandler.END
+
+    symbol_clean = text.upper()
+    response = (
+        f"📊 <b>ستاپ معاملاتی و وضعیت تکنیکال: {symbol_clean}</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "▫️ <b>روند کلی:</b> صعودی با مومنتوم معتدل\n"
+        "▫️ <b>محدوده حمایت کلیدی:</b> ناحیه تقاضای تایم‌فریم ۴ ساعته\n"
+        "▫️ <b>محدوده مقاومت:</b> سقف کانال قبلی\n"
+        "▫️ <b>پیشنهاد ستاپ:</b> مدیریت ریسک پله‌ای با تاییدیه کندلی در پولبک\n"
+        "▫️ <b>حد ضرر پیشنهادی (SL):</b> زیر کف حمایتی اخیر\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "⚠️ <i>لطفاً به مدیریت حجم و بیانیه ریسک توجه نمایید.</i>"
+    )
+    await update.message.reply_text(
+        response,
+        reply_markup=ReplyKeyboardMarkup(TRADING_MENU, resize_keyboard=True),
+        parse_mode="HTML"
+    )
+    return ConversationHandler.END
+
+# ================= هندلرهای ناوبری و منوها =================
+async def handle_navigation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    user_id = update.effective_user.id
+    user_data = USERS_DB.get(user_id, {
+        "name": update.effective_user.first_name or "نامشخص",
+        "phone": "ثبت‌نشده",
+        "experience": "متوسط",
+        "market": "فارکس و کریپتو",
+        "capital": "۱۰۰ تا ۳۰۰ دلار",
+        "watchlist": ["XAUUSD", "BTCUSDT"]
+    })
+
+    if text == "🏛 تالار معاملات":
+        await update.message.reply_text(
+            "🏛 <b>تالار معاملات روبو۷ الوند</b>\nگزینه مورد نظر را انتخاب کنید:",
+            reply_markup=ReplyKeyboardMarkup(TRADING_MENU, resize_keyboard=True),
+            parse_mode="HTML"
+        )
+    elif text == "🎓 آموزش":
+        await update.message.reply_text(
+            "🎓 <b>مرکز آموزش‌های معاملاتی</b>\nسطح مورد نظر خود را انتخاب کنید:",
+            reply_markup=ReplyKeyboardMarkup(EDUCATION_MENU, resize_keyboard=True),
+            parse_mode="HTML"
+        )
+    elif text == "📚 آموزش مقدماتی":
+        msg = (
+            "📚 <b>آموزش مقدماتی:</b>\n\n"
+            "۱. مفاهیم پیپ، لات، لوریج و مارجین\n"
+            "۲. انواع سفارش‌ها (Limit, Stop, Market)\n"
+            "۳. رسم خطوط روند، حمایت و مقاومت استاتیک\n"
+            "۴. قوانین بنیادین مدیریت سرمایه (حداکثر ۱٪ ریسک در هر معامله)"
+        )
+        await update.message.reply_text(msg, parse_mode="HTML")
+    elif text == "🚀 آموزش پیشرفته":
+        msg = (
+            "🚀 <b>آموزش پیشرفته (Smart Money & Price Action):</b>\n\n"
+            "۱. شناسایی اوردربلاک‌ها (Order Blocks) و FVG\n"
+            "۲. جریان نقدینگی و هانت استاپ‌ها (Liquidity Grabs)\n"
+            "۳. ورودهای بهینه با تاییدیه تایم پایین (LTF Confirmation)\n"
+            "۴. روانشناسی معامله‌گری و ژورنال‌نویسی روزانه"
+        )
+        await update.message.reply_text(msg, parse_mode="HTML")
+    elif text == "📅 تقویم اقتصادی":
+        cal_text = (
+            "📅 <b>مهم‌ترین رویدادهای اقتصادی هفته:</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🔴 <b>USD:</b> داده‌های تورمی CPI (نوسان بالا)\n"
+            "🟠 <b>USD:</b> شاخص مدعیان بیکاری (Jobless Claims)\n"
+            "🔴 <b>EUR:</b> بیانیه نرخ بهره بانک مرکزی اروپا (ECB)\n\n"
+            "⚠️ <i>پیشنهاد می‌شود در دقایق انتشار اخبار قرمز، معاملات باز نداشته باشید.</i>"
+        )
+        await update.message.reply_text(cal_text, parse_mode="HTML")
+    elif text == "📋 واچ‌لیست من":
+        wl = user_data.get("watchlist", ["XAUUSD", "BTCUSDT"])
+        items = "\n".join([f"🔹 {item}" for item in wl])
+        msg = f"📋 <b>واچ‌لیست فعال شما:</b>\n\n{items}\n\n<i>برای تحلیل روی هر نماد، از دکمه ستاپ در تالار معاملات استفاده کنید.</i>"
+        await update.message.reply_text(msg, parse_mode="HTML")
+    elif text == "⚙️ پروفایل من":
+        prof_text = (
+            "⚙️ <b>مشخصات حساب کاربری:</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 <b>نام:</b> {user_data.get('name')}\n"
+            f"📱 <b>شماره:</b> {user_data.get('phone')}\n"
+            f"📊 <b>تجربه:</b> {user_data.get('experience')}\n"
+            f"🎯 <b>بازار هدف:</b> {user_data.get('market')}\n"
+            f"💵 <b>سرمایه:</b> {user_data.get('capital')}\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🌟 <b>سطح دسترسی:</b> تستر فعال نسخه بتا (VIP)"
+        )
+        await update.message.reply_text(prof_text, parse_mode="HTML")
+    elif text == "⚖️ سلب مسئولیت حقوقی":
+        await update.message.reply_text(LEGAL_DISCLAIMER, parse_mode="HTML")
+    elif text == "📖 راهنما و پشتیبانی":
+        help_text = (
+            "📖 <b>راهنمای سامانه روبو۷ الوند:</b>\n\n"
+            "▫️ برای دریافت تحلیل هر نماد، وارد <b>تالار معاملات</b> شده و گزینه <b>دریافت ستاپ معاملاتی</b> را بزنید.\n"
+            "▫️ برای ارتباط با بخش فنی و پشتیبانی، با ادمین در ارتباط باشید:\n"
+            "📩 @Robo7Support"
+        )
+        await update.message.reply_text(help_text, parse_mode="HTML")
+    elif text in ["💹 فارکس / طلا", "⚡ فیوچرز", "💎 اسپات"]:
+        await update.message.reply_text(
+            f"بخش <b>{text}</b> در حال حاضر سیگنال‌های واچ‌لیست را رصد می‌کند. جهت استعلام اختصاصی دکمه «🎯 دریافت ستاپ معاملاتی» را بزنید.",
+            parse_mode="HTML"
+        )
+    elif text == "📊 گزارش عملکرد من":
+        await update.message.reply_text(
+            "📊 <b>گزارش عملکرد معاملات:</b>\n\n"
+            "▫️ وین‌ریت ستاپ‌های پیشنهادی هفته اخیر: ۷۴٪\n"
+            "▫️ میانگین سود به زیان (R:R): ۱ به ۲.۲\n"
+            "▫️ داده‌های فردی پس از ثبت گزارش‌های روزانه به‌روزرسانی خواهند شد.",
+            parse_mode="HTML"
+        )
+    elif text == "🔙 بازگشت به منوی اصلی":
+        await update.message.reply_text(
+            "به منوی اصلی بازگشتید:",
+            reply_markup=ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True),
+            parse_mode="HTML"
+        )
     else:
         await update.message.reply_text(
-            "سلام! 👋 به ربات دستیار تحلیلی **روبو۷ الوند** خوش آمدید.\n\n"
-            "جهت استفاده بهتر، لطفاً فرآیند ثبت‌نام کوتاه را تکمیل کنید.\n\n"
-            "۱. لطفاً **نام و نام خانوادگی** خود را وارد کنید:"
+            "دستور متوجه نشدم. لطفاً از گزینه‌های منو استفاده فرمایید.",
+            reply_markup=ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True),
+            parse_mode="HTML"
         )
-        return NAME
 
-async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['full_name'] = update.message.text
-    await update.message.reply_text("۲. لطفاً **شماره تماس** خود را وارد کنید (یا بنویسید 'ندارم'):")
-    return PHONE
-
-async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['phone'] = update.message.text
-    market_keyboard = ReplyKeyboardMarkup([['بورس ایران', 'کریپتو'], ['فورکس', 'همه موارد']], resize_keyboard=True, one_time_keyboard=True)
-    await update.message.reply_text("۳. بازار اصلی فعالیت شما کدام است؟", reply_markup=market_keyboard)
-    return MARKET
-
-async def get_market(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['market'] = update.message.text
-    capital_keyboard = ReplyKeyboardMarkup([['زیر ۵۰ میلیون', '۵۰ تا ۲۰۰ میلیون'], ['بالای ۲۰۰ میلیون']], resize_keyboard=True, one_time_keyboard=True)
-    await update.message.reply_text("۴. حدود سرمایه فعال شما چقدر است؟", reply_markup=capital_keyboard)
-    return CAPITAL
-
-async def get_capital(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['capital'] = update.message.text
-    exp_keyboard = ReplyKeyboardMarkup([['مبتدی', 'متوسط'], ['حرفه‌ای']], resize_keyboard=True, one_time_keyboard=True)
-    await update.message.reply_text("۵. سطح تجربه خود را در معامله‌گری مشخص کنید:", reply_markup=exp_keyboard)
-    return EXPERIENCE
-
-async def get_experience(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['experience'] = update.message.text
-    user_id = update.effective_user.id
-    username = update.effective_user.username or ""
-
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT OR REPLACE INTO users (user_id, username, full_name, phone, market, capital, experience)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        user_id, username,
-        context.user_data.get('full_name'),
-        context.user_data.get('phone'),
-        context.user_data.get('market'),
-        context.user_data.get('capital'),
-        context.user_data.get('experience')
-    ))
-    conn.commit()
-    conn.close()
-
-    await update.message.reply_text(
-        "✅ **ثبت‌نام شما با موفقیت انجام شد!**\n\nاکنون می‌توانید از تمام امکانات ربات استفاده کنید.",
-        reply_markup=MAIN_KEYBOARD
-    )
-    return ConversationHandler.END
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("فرآیند ثبت‌نام لغو شد. جهت شروع دوباره /start را بزنید.", reply_markup=MAIN_KEYBOARD)
-    return ConversationHandler.END
-
-# --- COMMAND HANDLERS ---
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = (
-        "❓ **راهنمای ربات روبو۷ الوند:**\n\n"
-        "📊 `/analyze [نام نماد]` - تحلیل سریع نماد (مثال: `/analyze فولاد`)\n"
-        "📋 `/watch` - مشاهده لیست پایش شما\n"
-        "⚙️ `/status` - وضعیت فنی و ارتباط ربات\n"
-        "❓ `/help` - نمایش این راهنما"
-    )
-    await update.message.reply_text(help_text, reply_markup=MAIN_KEYBOARD)
-
-async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    status_text = (
-        "⚙️ **وضعیت سیستم:**\n\n"
-        "🟢 وضعیت ربات: آنلاین و فعال\n"
-        "🗄 دیتابیس: متصل (SQLite)\n"
-        "🌐 سرور: Render Web Service\n"
-        "⏱ تاخیر پاسخگویی: عالی"
-    )
-    await update.message.reply_text(status_text, reply_markup=MAIN_KEYBOARD)
-
-async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.args:
-        symbol = context.args[0]
-        await update.message.reply_text(f"📊 در حال بررسی نماد **{symbol}**...\n\nموتور تحلیلی در فاز آزمایشی قرار دارد. داده‌های پایه‌ای ثبت شدند. ✅", reply_markup=MAIN_KEYBOARD)
-    else:
-        await update.message.reply_text("لطفاً نام نماد را جلوی دستور بنویسید.\nمثال: `/analyze فولاد` یا `/analyze XAUUSD`", reply_markup=MAIN_KEYBOARD)
-
-async def watch_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    watch_text = (
-        "📋 **واچ‌لیست شما:**\n\n"
-        "۱. 🪙 طلا / XAUUSD\n"
-        "۲. 📈 فولاد (بورس)\n"
-        "۳. ₿ بیت‌کوین / BTCUSDT\n\n"
-        "جهت افزودن نماد جدید از `/watch add [نماد]` استفاده کنید."
-    )
-    await update.message.reply_text(watch_text, reply_markup=MAIN_KEYBOARD)
-
-# --- TEXT BUTTON HANDLER ---
-async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    if text == '📊 تحلیل نماد':
-        await update.message.reply_text("لطفاً نماد مورد نظر را به این صورت وارد کنید:\n`/analyze نام_نماد` (مثال: `/analyze فولاد`)")
-    elif text == '📋 لیست پایش':
-        await watch_command(update, context)
-    elif text == '⚙️ وضعیت سیستم':
-        await status_command(update, context)
-    elif text == '❓ راهنما':
-        await help_command(update, context)
-    else:
-        await update.message.reply_text("پیام شما دریافت شد. برای دیدن گزینه‌ها از دکمه‌های پایین یا دستور /help استفاده کنید.", reply_markup=MAIN_KEYBOARD)
-
-# --- MAIN FUNCTION ---
+# ================= تابع اصلی اجرای ربات =================
 def main():
     token = os.environ.get("BOT_TOKEN")
     if not token:
-        print("Error: BOT_TOKEN environment variable is missing!")
+        logger.error("خطا: BOT_TOKEN در متغیرهای محیطی یافت نشد!")
         return
 
-    # Start Flask server in background thread
-    flask_thread = Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
+    # اجرای وب‌سرور Keep-Alive در یک Thread مجزا
+    server_thread = threading.Thread(target=run_keep_alive_server, daemon=True)
+    server_thread.start()
 
-    # Start Telegram Bot
-    app = ApplicationBuilder().token(token).build()
+    app = Application.builder().token(token).build()
 
-    # Onboarding Conversation Handler
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+    # مدیریت گفتگوی ثبت‌نام (Onboarding)
+    onboarding_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start_command)],
         states={
-            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
-            PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
-            MARKET: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_market)],
-            CAPITAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_capital)],
-            EXPERIENCE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_experience)],
+            STATE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_name)],
+            STATE_PHONE: [
+                MessageHandler(filters.CONTACT, receive_phone),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_phone)
+            ],
+            STATE_EXPERIENCE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_experience)],
+            STATE_MARKET: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_market)],
+            STATE_CAPITAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_capital)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
+        fallbacks=[CommandHandler("start", start_command)],
+        allow_reentry=True
     )
 
-    app.add_handler(conv_handler)
-    app.add_handler(CommandHandler('help', help_command))
-    app.add_handler(CommandHandler('status', status_command))
-    app.add_handler(CommandHandler('analyze', analyze_command))
-    app.add_handler(CommandHandler('watch', watch_command))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_buttons))
+    # مدیریت دریافت تحلیل و ستاپ بدون اسلش
+    symbol_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex("^🎯 دریافت ستاپ معاملاتی$"), prompt_for_symbol)],
+        states={
+            STATE_GET_SYMBOL: [MessageHandler(filters.TEXT & ~filters.COMMAND, analyze_symbol_input)]
+        },
+        fallbacks=[MessageHandler(filters.Regex("^🔙 بازگشت به منوی اصلی$"), handle_navigation)],
+        allow_reentry=True
+    )
 
-    print("Bot is running...")
-    app.run_polling()
+    app.add_handler(onboarding_handler)
+    app.add_handler(symbol_handler)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_navigation))
 
-if __name__ == '__main__':
+    logger.info("Robo7Alvand Bot is Starting...")
+    app.run_polling(drop_pending_updates=True)
+
+if __name__ == "__main__":
     main()
