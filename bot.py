@@ -1,6 +1,8 @@
 import os
 import logging
-from aiohttp import web
+import asyncio
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -16,29 +18,36 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# شناسه ادمین
+# شناسه ادمین (ابی)
 ADMIN_ID_RAW = os.environ.get("ADMIN_ID", "0")
 try:
     ADMIN_ID = int(ADMIN_ID_RAW.strip())
 except ValueError:
     ADMIN_ID = 0
 
-# وب‌سرور داخلی برای رندر
-async def health_check(request):
-    return web.Response(text="Robo7Alvand OK", status=200)
+# وب‌سرور داخلی ساده و بدون نیاز به کتابخانه جانبی برای رندر و UptimeRobot
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Robo7Alvand is active and running!")
 
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get('/', health_check)
-    app.router.add_head('/', health_check)
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+
+    def log_message(self, format, *args):
+        return  # خاموش کردن لاگ‌های مکرر مانیتورینگ برای خلوت ماندن کنسول
+
+def run_web_server():
     port = int(os.environ.get("PORT", 8080))
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
-    logger.info(f"Web server started on port {port}")
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    logger.info(f"Health check web server running on port {port}")
+    server.serve_forever()
 
-# پیام شروع
+# استارت بات تلگرام
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.effective_user:
         return
@@ -51,7 +60,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ["🛡 قوانین مدیریت ریسک", "⚙️ وضعیت حساب و ربات"]
     ]
     
-    # دکمه اختصاصی ابی
+    # دکمه اختصاصی پنل مدیریت برای ابی
     if user.id == ADMIN_ID:
         keyboard.append(["🛠 پنل مدیریت (تست سیگنال)"])
     
@@ -68,7 +77,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="Markdown")
 
-# دکمه‌های منو
+# مدیریت دستورات منو
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -122,17 +131,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("لطفاً از دکمه‌های منو استفاده کنید.")
 
-async def post_init(application):
-    await start_web_server()
-
 def main():
     token = os.environ.get("BOT_TOKEN")
     if not token:
-        logger.error("BOT_TOKEN is missing!")
+        logger.error("BOT_TOKEN is GAPGPTMASKTOKEN64eotdop9djX0X")
         return
 
-    application = ApplicationBuilder().token(token).post_init(post_init).build()
+    # اجرای وب‌سرور پایتون در یک Thread مجزا
+    web_thread = threading.Thread(target=run_web_server, daemon=True)
+    web_thread.start()
 
+    # اجرای ربات تلگرام
+    application = ApplicationBuilder().token(token).build()
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
