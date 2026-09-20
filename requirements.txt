@@ -1,6 +1,2 @@
-python-telegram-bot>=21.0
-yfinance
-pandas
-ta
-requests
-flask
+python-telegram-bot==21.6
+aiohttp==3.9.5
