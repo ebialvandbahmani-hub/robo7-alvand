@@ -25,9 +25,124 @@ logging.basicConfig(
 )
 logger = logging.getLogger("Robo7Alvand")
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "GAPGPTMASKTOKENw0upg7gs3vX0X")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "GAPGPTMASKTOKENqejkdjrqdwkX0X")
 PORT = int(os.environ.get("PORT", 8080))
 DB_PATH = "robo7alvand.db"
+
+# دیتابیس ستاپ‌ها و تحلیل‌های تفکیک‌شده برای نمادهای اصلی
+MARKET_DATA = {
+    "BTC": {
+        "name": "بیت‌کوین (BTC/USDT)",
+        "price": "63,450$",
+        "setup": {
+            "direction": "🟢 LONG (خرید پله‌ای)",
+            "entry": "63,100 - 63,300",
+            "sl": "62,200",
+            "tp1": "64,800",
+            "tp2": "66,200",
+            "rr": "۱ به ۲.۸ ✅",
+            "note": "ورود فقط با تایید کندل ۴ ساعته بالای حمایت. از ورود مارکت خودداری شود."
+        },
+        "analysis": (
+            "📊 **تحلیل جامع تکنیکال BTC/USDT:**\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "• روند کلی: صعودی تثبیت‌شده بالای میانگین متحرک ۲۰۰ روزه\n"
+            "• حمایت‌های کلیدی: 62,500$ و 60,800$\n"
+            "• مقاومت‌های پیش‌رو: 64,500$ و 66,000$\n"
+            "• شاخص قدرت نسبی (RSI): عدد 56 (حالت تعادل بدون اشباع خرید)\n"
+            "• ساختار فشرده‌سازی: الگوی وج صعودی در تایم ۴ ساعته\n"
+            "• استراتژی الوند: ورود پله‌ای فقط در پولبک به سطوح حمایتی؛ پایبندی اکید به حد ضرر."
+        )
+    },
+    "ETH": {
+        "name": "اتریوم (ETH/USDT)",
+        "price": "2,650$",
+        "setup": {
+            "direction": "🟢 LONG",
+            "entry": "2,610 - 2,630",
+            "sl": "2,540",
+            "tp1": "2,780",
+            "tp2": "2,890",
+            "rr": "۱ به ۲.۵ ✅",
+            "note": "حفظ کف ۲,۵۴۰ شرط اصلی اعتبار این ستاپ است."
+        },
+        "analysis": (
+            "📊 **تحلیل جامع تکنیکال ETH/USDT:**\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "• روند کلی: رنج متمایل به صعودی پس از شکست خط روند نزولی\n"
+            "• حمایت اصلی: 2,580$ و 2,520$\n"
+            "• مقاومت‌های مهم: 2,720$ و 2,850$\n"
+            "• حجم معاملات: در حال افزایش در کف‌های قیمتی\n"
+            "• استراتژی الوند: شکار پوزیشن‌های خرید نزدیک به حمایت ۲,۵۸۰ با حجم کنترل‌شده."
+        )
+    },
+    "SOL": {
+        "name": "سولانا (SOL/USDT)",
+        "price": "148.5$",
+        "setup": {
+            "direction": "⚪️ خنثی / بدون ستاپ معتبر",
+            "entry": "منتظر بمانید",
+            "sl": "--",
+            "tp1": "--",
+            "tp2": "--",
+            "rr": "فاقد نسبت R:R مجاز ⚠️",
+            "note": "قیمت دقیقاً در میانه رنج نوسانی است. قانون Anti-FOMO: ورود در اواسط رنج ممنوع!"
+        },
+        "analysis": (
+            "📊 **تحلیل جامع تکنیکال SOL/USDT:**\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "• روند کلی: فاز انباشت و نوسان فشرده بین ۱۴۲ تا ۱۵۵ دلار\n"
+            "• حمایت کلیدی: 142$\n"
+            "• مقاومت کلیدی: 155$\n"
+            "• اندیکاتور MACD: فلت بدون سیگنال جهت‌دار قطعی\n"
+            "• استراتژی الوند: عدم معامله تا زمانی که کندل روزانه بالای ۱۵۵ یا زیر ۱۴۲ بسته شود."
+        )
+    },
+    "XAUUSD": {
+        "name": "انس طلای جهانی (XAU/USD)",
+        "price": "2,625$",
+        "setup": {
+            "direction": "🔴 SHORT (اصلاحی با ریسک کنترل‌شده)",
+            "entry": "2,632 - 2,635",
+            "sl": "2,643",
+            "tp1": "2,615",
+            "tp2": "2,600",
+            "rr": "۱ به ۳.۲ ✅",
+            "note": "سایز پوزیشن نصف حد استاندارد؛ اخبار نرخ بهره فدرال رزرو مدنظر باشد."
+        },
+        "analysis": (
+            "📊 **تحلیل جامع تکنیکال طلا (XAU/USD):**\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "• روند کلی: صعودی پرقدرت روزانه ولی نشانه‌های خستگی روند در تایم ۱ ساعته\n"
+            "• واگرایی: واگرایی منفی واضح در اندیکاتور RSI در سقف‌های قیمتی\n"
+            "• سطوح حمایت: 2,612 و 2,590\n"
+            "• مقاومت اصلی: محدوده روانی 2,640\n"
+            "• استراتژی الوند: پرهیز شدید از خرید در سقف تاریخی (قانون ضد فومو)؛ جستجوی پولبک برای ورود مطمئن‌تر."
+        )
+    },
+    "EURUSD": {
+        "name": "یورو/دلار (EUR/USD)",
+        "price": "1.1120",
+        "setup": {
+            "direction": "🟢 LONG",
+            "entry": "1.1095 - 1.1105",
+            "sl": "1.1065",
+            "tp1": "1.1180",
+            "tp2": "1.1240",
+            "rr": "۱ به ۲.۳ ✅",
+            "note": "تایید نهایی ورود همزمان با شروع همپوشانی نشست‌های لندن و نیویورک."
+        },
+        "analysis": (
+            "📊 **تحلیل جامع تکنیکال EUR/USD:**\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "• روند کلی: صعودی میان‌مدت، تثبیت بالای سطح روانی ۱.۱۱۰۰\n"
+            "• سطح حمایت معتبر: 1.1080\n"
+            "• مقاومت کلیدی: 1.1200\n"
+            "• رفتار قیمتی: تشکیل الگوی کف دوقلو در تایم ۴ ساعته\n"
+            "• استراتژی الوند: خرید در تست مجدد خط گردن در حوالی ۱.۱۱۰۰ با استاپ باریک."
+        )
+    }
+}
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -103,6 +218,28 @@ def market_menu_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
+def symbols_keyboard():
+    keyboard = [
+        ["BTC (بیت‌کوین)", "ETH (اتریوم)"],
+        ["SOL (سولانا)", "XAUUSD (طلا)"],
+        ["EURUSD (یورو/دلار)", "🔙 بازگشت به تالار"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+def normalize_symbol(text: str):
+    t = text.upper()
+    if "BTC" in t or "بیت" in t:
+        return "BTC"
+    elif "ETH" in t or "اتریوم" in t:
+        return "ETH"
+    elif "SOL" in t or "سولانا" in t:
+        return "SOL"
+    elif "XAU" in t or "طلا" in t or "GOLD" in t:
+        return "XAUUSD"
+    elif "EUR" in t or "یورو" in t:
+        return "EURUSD"
+    return None
+
 async def handle_health_check(request):
     return web.Response(text="Robo7Alvand Core is ACTIVE and Running!")
 
@@ -120,7 +257,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = get_user(user_id)
 
-    if not user or user[6] != 'COMPLETED':
+    if not user or user[6] not in ['COMPLETED', 'WAITING_SETUP_SYMBOL', 'WAITING_ANALYSIS_SYMBOL']:
         save_user(user_id, step='NAME')
         await update.message.reply_text(
             "👋 درود! به سامانه معاملاتی **Robo7Alvand** خوش آمدید.\n\n"
@@ -128,6 +265,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=ReplyKeyboardRemove()
         )
     else:
+        save_user(user_id, step='COMPLETED')
         await update.message.reply_text(
             f"سلام {user[1]} عزیز! 🦅\n"
             "سیستم فعال است و بازار تحت رصد قرار دارد.",
@@ -157,6 +295,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     step = user[6]
 
+    # مراحل آنبوردینگ
     if step == 'NAME':
         save_user(user_id, name=text, step='PHONE')
         contact_kb = ReplyKeyboardMarkup(
@@ -208,39 +347,88 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # منوها و ناوبری
     if text == "🔙 بازگشت به منوی اصلی":
+        save_user(user_id, step='COMPLETED')
         await update.message.reply_text("منوی اصلی سیستم:", reply_markup=main_menu_keyboard())
+        return
+
+    elif text == "🔙 بازگشت به تالار":
+        save_user(user_id, step='COMPLETED')
+        await update.message.reply_text("تالار معاملات:", reply_markup=market_menu_keyboard())
+        return
 
     elif text == "🏛 تالار معاملات":
+        save_user(user_id, step='COMPLETED')
         await update.message.reply_text(
             "به تالار معاملات خوش آمدید.\nیکی از گزینه‌های زیر را انتخاب فرمایید:",
             reply_markup=market_menu_keyboard()
         )
+        return
 
+    # ۱. ورود به بخش ستاپ‌ها
     elif text == "🎯 ستاپ‌های معاملاتی":
-        msg = (
-            "📌 **ستاپ‌های تاییدشده الگوریتم (ریسک به ریوارد بالای ۱:۲):**\n\n"
-            "🔹 **نماد:** BTC/USDT (کریپتو)\n"
-            "• جهت: LONG\n"
-            "• نقطه ورود: 63,200\n"
-            "• حد ضرر (SL): 62,500\n"
-            "• حد سود (TP): 65,400\n"
-            "• نسبت R:R: ۱ به ۳.۱ ✅\n"
-            "• وضعیت: منتظر پولبک و تثبیت در محدوده حمایت\n\n"
-            "🔸 **نماد:** XAU/USD (طلا جهانی)\n"
-            "• جهت: فاز تثبیت رنج\n"
-            "• هشدار موتور ریسک: از ورود در میانه رنج اکیداً خودداری شود!"
+        save_user(user_id, step='WAITING_SETUP_SYMBOL')
+        await update.message.reply_text(
+            "🎯 **بخش ستاپ‌های معاملاتی الگوریتم**\n\n"
+            "برای دریافت ستاپ، نماد مورد نظر خود را انتخاب کنید یا نام آن را بنویسید (BTC, ETH, طلا, SOL, EURUSD):",
+            reply_markup=symbols_keyboard()
         )
-        await update.message.reply_text(msg, reply_markup=market_menu_keyboard())
+        return
 
+    # ۲. ورود به بخش تحلیل تکنیکال
     elif text == "📈 تحلیل تکنیکال":
-        msg = (
-            "📊 **خلاصه وضعیت تحلیل تکنیکال الوند:**\n\n"
-            "• **بیت‌کوین (BTC):** بالای میانگین متحرک ۲۰۰ روزه تثبیت شده. مومنتوم صعودی ملایم.\n"
-            "• **طلا (Gold):** مواجهه با مقاومت کلیدی؛ واگرایی منفی در تایم‌فریم ۴ ساعته مشهود است.\n"
-            "• شاخص قدرت خریدار در حالت تعادل قرار دارد."
+        save_user(user_id, step='WAITING_ANALYSIS_SYMBOL')
+        await update.message.reply_text(
+            "📈 **بخش تحلیل جامع تکنیکال و رفتارشناسی بازار**\n\n"
+            "برای دریافت تحلیل، نماد مورد نظر خود را انتخاب کنید یا نام آن را بنویسید (BTC, ETH, طلا, SOL, EURUSD):",
+            reply_markup=symbols_keyboard()
         )
-        await update.message.reply_text(msg, reply_markup=market_menu_keyboard())
+        return
+
+    # ۳. دریافت و نمایش ستاپ برای نماد انتخابی
+    elif step == 'WAITING_SETUP_SYMBOL':
+        sym = normalize_symbol(text)
+        if sym and sym in MARKET_DATA:
+            data = MARKET_DATA[sym]
+            s = data["setup"]
+            msg = (
+                f"🎯 **ستاپ معاملاتی اختصاصی Robo7Alvand**\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"🏷 **نماد:** {data['name']}\n"
+                f"💵 **قیمت مرجع:** {data['price']}\n"
+                f"🧭 **جهت معامله:** {s['direction']}\n"
+                f"🎯 **محدوده ورود:** {s['entry']}\n"
+                f"🛑 **حد ضرر (SL):** {s['sl']}\n"
+                f"🎯 **تارگت اول (TP1):** {s['tp1']}\n"
+                f"🚀 **تارگت دوم (TP2):** {s['tp2']}\n"
+                f"⚖️ **نسبت ریسک به ریوارد (R:R):** {s['rr']}\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"💡 **توصیه انضباطی موتور ریسک:**\n"
+                f"{s['note']}"
+            )
+            await update.message.reply_text(msg, reply_markup=symbols_keyboard())
+        else:
+            await update.message.reply_text(
+                "⚠️ نماد وارد شده در لیست فاز ۱ نیست یا نامعتبر است.\n"
+                "لطفاً یکی از دکمه‌های زیر را انتخاب کنید:",
+                reply_markup=symbols_keyboard()
+            )
+        return
+
+    # ۴. دریافت و نمایش تحلیل برای نماد انتخابی
+    elif step == 'WAITING_ANALYSIS_SYMBOL':
+        sym = normalize_symbol(text)
+        if sym and sym in MARKET_DATA:
+            data = MARKET_DATA[sym]
+            await update.message.reply_text(data["analysis"], reply_markup=symbols_keyboard())
+        else:
+            await update.message.reply_text(
+                "⚠️ نماد وارد شده در لیست فاز ۱ نیست یا نامعتبر است.\n"
+                "لطفاً یکی از دکمه‌های زیر را انتخاب کنید:",
+                reply_markup=symbols_keyboard()
+            )
+        return
 
     elif text == "📡 رادار بازار":
         msg = (
@@ -285,7 +473,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "⚙️ وضعیت سیستم":
         msg = (
             "⚙️ **وضعیت سیستم و سرور:**\n\n"
-            "• هسته پردازش: Robo7Alvand Core v2\n"
+            "• هسته پردازش: Robo7Alvand Core v2.1\n"
             f"• وضعیت وب‌سرور هلث‌چک: فعال روی پورت {PORT}\n"
             "• اتصال به تلگرام: استیبل (Polling)\n"
             "• وضعیت دیتابیس: متصل (SQLite)"
@@ -313,7 +501,6 @@ async def main_async():
     async with app:
         await app.start()
         await app.updater.start_polling(drop_pending_updates=True)
-        # Keep app running
         await asyncio.Event().wait()
 
 if __name__ == "__main__":
