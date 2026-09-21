@@ -18,27 +18,19 @@ from telegram.ext import (
     filters
 )
 
-# -------------------------------------------------------------
-# ۱. تنظیمات اولیه لاگ و متغیرها
-# -------------------------------------------------------------
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger("Robo7Alvand")
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "GAPGPTMASKTOKENcvpgdps5ilgX0X")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "GAPGPTMASKTOKEN3bdy8jqyu0kX0X")
 PORT = int(os.environ.get("PORT", 8080))
 DB_PATH = "robo7alvand.db"
 
-# -------------------------------------------------------------
-# ۲. مدیریت پایگاه داده (SQLite)
-# -------------------------------------------------------------
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    
-    # جدول ثبت مشخصات کاربران
     c.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -51,8 +43,6 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    
-    # جدول ژورنال معاملات
     c.execute("""
         CREATE TABLE IF NOT EXISTS trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,9 +87,6 @@ def save_user(user_id, **kwargs):
         
     conn.close()
 
-# -------------------------------------------------------------
-# ۳. کیبوردهای سیستم
-# -------------------------------------------------------------
 def main_menu_keyboard():
     keyboard = [
         ["🏛 تالار معاملات", "📊 گزارش عملکرد"],
@@ -115,9 +102,6 @@ def market_menu_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# -------------------------------------------------------------
-# ۴. وب‌سرور برای زنده نگه داشتن سرویس در Render
-# -------------------------------------------------------------
 async def handle_health_check(request):
     return web.Response(text="Robo7Alvand Core is ACTIVE and Running!")
 
@@ -131,9 +115,6 @@ async def start_web_server():
     await site.start()
     logger.info(f"✅ Web server successfully bound to port {PORT}")
 
-# -------------------------------------------------------------
-# ۵. دستور /start و مراحل Onboarding
-# -------------------------------------------------------------
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = get_user(user_id)
@@ -152,9 +133,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_menu_keyboard()
         )
 
-# -------------------------------------------------------------
-# ۶. دریافت شماره تماس و مدیریت پیام‌های متنی
-# -------------------------------------------------------------
 async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     contact = update.message.contact
@@ -178,7 +156,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     step = user[6]
 
-    # مرحله ۱: دریافت نام
     if step == 'NAME':
         save_user(user_id, name=text, step='PHONE')
         contact_kb = ReplyKeyboardMarkup(
@@ -192,7 +169,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # مرحله ۲: دریافت شماره تماس به صورت متنی
     elif step == 'PHONE':
         save_user(user_id, phone=text, step='MARKET')
         market_kb = [["فارکس (Forex)", "کریپتو (Crypto)"], ["هر دو بازار"]]
@@ -202,7 +178,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # مرحله ۳: انتخاب بازار
     elif step == 'MARKET':
         save_user(user_id, market=text, step='LEVEL')
         level_kb = [["مبتدی (زیر ۶ ماه)", "متوسط (۶ ماه تا ۲ سال)"], ["حرفه‌ای (بیش از ۲ سال)"]]
@@ -212,7 +187,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # مرحله ۴: انتخاب سطح
     elif step == 'LEVEL':
         save_user(user_id, level=text, step='CAPITAL')
         cap_kb = [["زیر ۱,۰۰۰ دلار", "۱,۰۰۰ تا ۱۰,۰۰۰ دلار"], ["بالای ۱۰,۰۰۰ دلار"]]
@@ -222,7 +196,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # مرحله ۵: انتخاب سرمایه و اتمام ثبت‌نام
     elif step == 'CAPITAL':
         save_user(user_id, capital=text, step='COMPLETED')
         await update.message.reply_text(
@@ -234,7 +207,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # --- بخش‌های منوی اصلی و تالار معاملات ---
     if text == "🔙 بازگشت به منوی اصلی":
         await update.message.reply_text("منوی اصلی سیستم:", reply_markup=main_menu_keyboard())
 
@@ -325,11 +297,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_menu_keyboard()
         )
 
-# -------------------------------------------------------------
-# ۷. تابع post_init و نقطه ورود اصلی برنامه
-# -------------------------------------------------------------
 async def post_init(application: Application):
-    # راه‌اندازی وب‌سرور همگام با استارت بات
     await start_web_server()
 
 def main():
@@ -342,7 +310,6 @@ def main():
         .build()
     )
 
-    # اتصال هندلرها
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
