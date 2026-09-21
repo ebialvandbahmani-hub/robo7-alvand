@@ -1,9 +1,9 @@
 import os
 import logging
+import threading
 from dataclasses import dataclass
 from typing import Optional
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -19,13 +19,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("Robo7Alvand")
 
-# دریافت توکن
+# توکن ربات
 TOKEN = os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
 
-# لیست نمادهای مجاز
 ALLOWED_SYMBOLS = {"BTCUSDT", "ETHUSDT", "SOLUSDT", "XAUUSD", "EURUSD"}
-
-# ژورنال معاملات
 TRADE_JOURNAL = []
 
 # --- هسته مدیریت ریسک ---
@@ -94,32 +91,32 @@ class RiskEngine:
         setup.is_valid = True
         return setup
 
-# --- سرور وب برای پینگ و آپ‌تایم رندر ---
-class HealthCheckHandler(BaseHTTPRequestHandler):
+# سرور داخلی برای پینگ رندر
+class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"ROBO7ALVAND_OK")
+        self.wfile.write(b"ROBO7ALVAND_ONLINE")
 
     def log_message(self, format, *args):
-        return
+        pass
 
-def run_web_server():
+def start_server():
     port = int(os.getenv("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
     server.serve_forever()
 
-# --- کیبورد اصلی ---
-def main_keyboard():
+# کیبورد اصلی
+def get_main_menu():
     keyboard = [
         [
-            InlineKeyboardButton("📊 راهنمای ثبت ستاپ", callback_data="btn_help"),
-            InlineKeyboardButton("📓 ژورنال معاملات", callback_data="btn_journal")
+            InlineKeyboardButton("📊 راهنمای ثبت ترید", callback_data="help"),
+            InlineKeyboardButton("📓 ژورنال معاملات", callback_data="journal")
         ],
         [
-            InlineKeyboardButton("🛡 مرامنامه مدیریت ریسک", callback_data="btn_rules"),
-            InlineKeyboardButton("🏓 وضعیت سرور (Ping)", callback_data="btn_ping")
+            InlineKeyboardButton("🛡 مرامنامه ضد FOMO", callback_data="rules"),
+            InlineKeyboardButton("🏓 پینگ سرور", callback_data="ping")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -127,54 +124,45 @@ def main_keyboard():
 TEXT_RULES = (
     "🛡 **مرامنامه مدیریت ریسک Robo7Alvand:**\n\n"
     "۱. حداقل نسبت R:R باید ۱ به ۲ باشد.\n"
-    "۲. استراتژی مارتینگل (Martingale) اکیداً ممنوع و مسدود است.\n"
-    "۳. ورود در میانه رنج قیمت ممنوع است؛ فقط نواحی کلیدی عرضه و تقاضا.\n"
-    "۴. حفظ سرمایه اولویت اول است؛ بدون تایید ستاپ ترید نکنید."
+    "۲. استراتژی مارتینگل اکیداً ممنوع است.\n"
+    "۳. ورود در میانه رنج قیمت ممنوع است.\n"
+    "۴. اولویت اول: حفظ سرمایه."
 )
 
 TEXT_HELP = (
-    "📊 **فرمت ثبت ستاپ معاملاتی:**\n\n"
+    "📊 **راهنمای ثبت ستاپ:**\n\n"
+    "فرمت دستور:\n"
     "`/trade [نماد] [BUY/SELL] [ورود] [حدضرر] [تارگت]`\n\n"
-    "مثال:\n"
+    "نمونه:\n"
     "`/trade BTCUSDT BUY 64000 63500 65500`"
 )
 
-def get_journal_text():
+# دستورات تلگرام
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = (
+        "🦅 **سامانه تحلیلی Robo7Alvand آنلاین شد.**\n\n"
+        "برای تست دکمه‌های زیر را لمس کنید:"
+    )
+    await update.effective_message.reply_text(msg, reply_markup=get_main_menu(), parse_mode="Markdown")
+
+async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.effective_message.reply_text("🏓 پونگ! سرور فعال و ربات آماده دریافت دستورات است.")
+
+async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.effective_message.reply_text(TEXT_RULES, parse_mode="Markdown")
+
+async def journal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not TRADE_JOURNAL:
-        return "📓 ژورنال خالی است. هنوز معامله‌ای ثبت نشده است."
-    res = "📓 **آخرین معاملات تایید شده:**\n\n"
+        await update.effective_message.reply_text("📓 ژورنال خالی است. هنوز معامله‌ای ثبت نشده.")
+        return
+    res = "📓 **معاملات ثبت شده:**\n\n"
     for i, t in enumerate(TRADE_JOURNAL[-5:], 1):
         res += f"{i}. {t['symbol']} ({t['side']}) | ورود: {t['entry']} | SL: {t['sl']} | TP: {t['tp']} | R:R: 1:{t['rr']}\n"
-    return res
+    await update.effective_message.reply_text(res)
 
-# --- دستورات متنی تلگرام ---
-async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = (
-        "🦅 **به سامانه هوشمند Robo7Alvand خوش آمدید**\n\n"
-        "این سیستم بر پایه انضباط، فیلترهای ضد هیجان و پرایس اکشن طراحی شده است.\n"
-        "یکی از گزینه‌های زیر را انتخاب کنید:"
-    )
-    if update.message:
-        await update.message.reply_text(msg, reply_markup=main_keyboard(), parse_mode="Markdown")
-
-async def ping_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message:
-        await update.message.reply_text("🏓 پونگ! سیستم کاملاً آنلاین و پایدار است.")
-
-async def rules_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message:
-        await update.message.reply_text(TEXT_RULES, parse_mode="Markdown")
-
-async def journal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message:
-        await update.message.reply_text(get_journal_text())
-
-async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
-        return
-
+async def trade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 5:
-        await update.message.reply_text(TEXT_HELP, parse_mode="Markdown")
+        await update.effective_message.reply_text(TEXT_HELP, parse_mode="Markdown")
         return
 
     try:
@@ -183,9 +171,8 @@ async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         setup = RiskEngine.evaluate(sym, side, entry, sl, tp)
 
         if not setup.is_valid:
-            await update.message.reply_text(
-                f"🚫 **ستاپ معامله رد شد!**\n\n"
-                f"{setup.rejection_reason}",
+            await update.effective_message.reply_text(
+                f"🚫 **رد ستاپ معاملاتی!**\n\n{setup.rejection_reason}",
                 parse_mode="Markdown"
             )
             return
@@ -196,65 +183,66 @@ async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "tp": setup.take_profit, "rr": setup.risk_reward_ratio
         })
 
-        await update.message.reply_text(
-            f"✅ **ستاپ معاملاتی تایید و در ژورنال ثبت شد.**\n\n"
+        await update.effective_message.reply_text(
+            f"✅ **ستاپ تایید و در ژورنال ذخیره شد.**\n\n"
             f"💎 نماد: {setup.symbol} ({setup.side})\n"
-            f"📍 قیمت ورود: {setup.entry}\n"
-            f"🛑 حد ضرر: {setup.stop_loss} (ریسک: {setup.risk_amount})\n"
-            f"🎯 تارگت سود: {setup.take_profit} (ریوارد: {setup.reward_amount})\n"
-            f"⚖️ نسبت R:R: 1 : {setup.risk_reward_ratio}\n\n"
-            f"📌 با تعهد کامل به استراتژی وارد شوید.",
+            f"📍 ورود: {setup.entry}\n"
+            f"🛑 حد ضرر: {setup.stop_loss}\n"
+            f"🎯 تارگت: {setup.take_profit}\n"
+            f"⚖️ نسبت سود به ریسک: 1:{setup.risk_reward_ratio}",
             parse_mode="Markdown"
         )
     except ValueError:
-        await update.message.reply_text("⚠️ مقادیر قیمت ورود، حد ضرر و تارگت باید اعداد معتبر باشند.")
+        await update.effective_message.reply_text("⚠️ قیمت‌ها باید عدد انگلیسی باشند.")
 
-# --- مدیریت کلیک تمام دکمه‌ها ---
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# پاسخ به کلیک دکمه‌ها
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    # پاسخ سریع به تلگرام برای قطع شدن لودینگ دکمه
-    await query.answer()
+    await query.answer()  # رفع فوری ساعت‌شنی
 
     data = query.data
-    logger.info(f"Button clicked: {data}")
+    logger.info(f"دکمه لمس شد: {data}")
 
-    if data in ["btn_ping", "ping"]:
-        await query.message.reply_text("🏓 پونگ! سیستم کاملاً آنلاین و پایدار است.")
-    elif data in ["btn_rules", "rules"]:
+    if data in ["ping", "btn_ping"]:
+        await query.message.reply_text("🏓 پونگ! سیستم کاملاً فعال است.")
+    elif data in ["rules", "btn_rules"]:
         await query.message.reply_text(TEXT_RULES, parse_mode="Markdown")
-    elif data in ["btn_journal", "journal"]:
-        await query.message.reply_text(get_journal_text())
-    elif data in ["btn_help", "trade_help"]:
+    elif data in ["journal", "btn_journal"]:
+        if not TRADE_JOURNAL:
+            await query.message.reply_text("📓 ژورنال خالی است.")
+        else:
+            res = "📓 **معاملات ثبت شده:**\n\n"
+            for i, t in enumerate(TRADE_JOURNAL[-5:], 1):
+                res += f"{i}. {t['symbol']} ({t['side']}) | ورود: {t['entry']} | SL: {t['sl']} | TP: {t['tp']} | R:R: 1:{t['rr']}\n"
+            await query.message.reply_text(res)
+    elif data in ["help", "btn_help", "trade_help"]:
         await query.message.reply_text(TEXT_HELP, parse_mode="Markdown")
     else:
-        await query.message.reply_text("گزینه دریافت شد.")
-
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    logger.error("خطای سیستمی:", exc_info=context.error)
+        await query.message.reply_text(f"گزینه {data} انتخاب شد.")
 
 def main():
     if not TOKEN:
-        raise ValueError("BOT_TOKEN ست نشده است!")
+        raise ValueError("BOT_TOKEN یافت نشد!")
 
     # اجرای سرور وب در پس‌زمینه
-    web_thread = threading.Thread(target=run_web_server, daemon=True)
-    web_thread.start()
+    t = threading.Thread(target=start_server, daemon=True)
+    t.start()
 
-    # ساخت اپلیکیشن با متد استاندارد پایدار
-    application = ApplicationBuilder().token(TOKEN).build()
+    # ساخت ربات
+    app = ApplicationBuilder().token(TOKEN).build()
 
-    application.add_handler(CommandHandler("start", start_cmd))
-    application.add_handler(CommandHandler("ping", ping_cmd))
-    application.add_handler(CommandHandler("journal", journal_cmd))
-    application.add_handler(CommandHandler("rules", rules_cmd))
-    application.add_handler(CommandHandler("trade", trade_cmd))
-    
-    # ثبت هندلر دکمه‌ها
-    application.add_handler(CallbackQueryHandler(callback_handler))
-    application.add_error_handler(error_handler)
+    # هندلرهای دستورات
+    app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("ping", ping_command))
+    app.add_handler(CommandHandler("rules", rules_command))
+    app.add_handler(CommandHandler("journal", journal_command))
+    app.add_handler(CommandHandler("trade", trade_command))
 
-    logger.info("ربات در حال اجرا است...")
-    application.run_polling(drop_pending_updates=True)
+    # هندلر دکمه‌ها
+    app.add_handler(CallbackQueryHandler(button_handler))
+
+    logger.info("Robo7Alvand با موفقیت استارت خورد.")
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
