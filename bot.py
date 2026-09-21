@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 import threading
 from datetime import datetime
@@ -10,15 +11,17 @@ from telegram.ext import (
     ContextTypes
 )
 
+# لاگینگ
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
+# حافظه موقت ژورنال معاملات
 TRADE_JOURNAL = []
 
-# ۱. وب‌سرور داخلی سبک برای زنده ماندن در رندر
+# وب‌سرور سبک برای زنده نگه داشتن پورت در Render
 class KeepAliveHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -37,7 +40,7 @@ def run_server():
     server = HTTPServer(('0.0.0.0', port), KeepAliveHandler)
     server.serve_forever()
 
-# ۲. دستور /start
+# دستورات بات
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
         "🟢 دستیار تحلیلی Robo7Alvand متصل و آماده است.\n\n"
@@ -52,11 +55,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(msg)
 
-# ۳. دستور /ping
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🏓 پونگ! سیستم کاملاً آنلاین و پایدار است.")
 
-# ۴. ثبت ستاپ و کنترل ریسک
 async def trade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if len(args) != 5:
@@ -125,7 +126,6 @@ async def trade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error: {e}")
 
-# ۵. دفترچه ژورنال
 async def journal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not TRADE_JOURNAL:
         await update.message.reply_text("📓 دفترچه معاملات خالی است.")
@@ -140,14 +140,16 @@ async def journal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     await update.message.reply_text(text)
 
-def main():
+async def run_bot():
     token = os.environ.get("BOT_TOKEN", "").strip()
     if not token:
-        logger.error("BOT_TOKEN is GAPGPTMASKTOKENmr0mv8g4nfoX0X")
+        logger.error("BOT_TOKEN is missing!")
         return
 
+    # اجرای سرور Keep-Alive در پس‌زمینه
     threading.Thread(target=run_server, daemon=True).start()
 
+    # ساخت اپلیکیشن بات
     application = ApplicationBuilder().token(token).build()
 
     application.add_handler(CommandHandler("start", start_command))
@@ -156,7 +158,16 @@ def main():
     application.add_handler(CommandHandler("journal", journal_command))
 
     logger.info("Robo7Alvand Core Engine is Active...")
-    application.run_polling(drop_pending_updates=True)
+    
+    # راه‌اندازی اصولی و Async
+    async with application:
+        await application.start()
+        await application.updater.start_polling(drop_pending_updates=True)
+        while True:
+            await asyncio.sleep(3600)
+
+def main():
+    asyncio.run(run_bot())
 
 if __name__ == "__main__":
     main()
