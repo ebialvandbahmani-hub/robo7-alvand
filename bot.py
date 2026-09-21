@@ -1,6 +1,7 @@
 import os
 import logging
 import sqlite3
+import asyncio
 from datetime import datetime
 from aiohttp import web
 
@@ -24,7 +25,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("Robo7Alvand")
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "GAPGPTMASKTOKENdok3kvizp1tX0X")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "GAPGPTMASKTOKENw0upg7gs3vX0X")
 PORT = int(os.environ.get("PORT", 8080))
 DB_PATH = "robo7alvand.db"
 
@@ -297,25 +298,23 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_menu_keyboard()
         )
 
-async def post_init(application: Application):
-    await start_web_server()
-
-def main():
+async def main_async():
     init_db()
 
-    app = (
-        Application.builder()
-        .token(BOT_TOKEN)
-        .post_init(post_init)
-        .build()
-    )
+    app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
+    await start_web_server()
+    
     logger.info("Robo7Alvand bot is starting polling...")
-    app.run_polling(drop_pending_updates=True)
+    async with app:
+        await app.start()
+        await app.updater.start_polling(drop_pending_updates=True)
+        # Keep app running
+        await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main_async())
