@@ -24,7 +24,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("Robo7Alvand")
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "GAPGPTMASKTOKEN3bdy8jqyu0kX0X")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "GAPGPTMASKTOKENdok3kvizp1tX0X")
 PORT = int(os.environ.get("PORT", 8080))
 DB_PATH = "robo7alvand.db"
 
