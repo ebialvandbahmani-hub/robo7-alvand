@@ -13,20 +13,23 @@ from telegram.ext import (
     ContextTypes
 )
 
-# لاگینگ سیستم
+# لاگ سیستم
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger("Robo7Alvand")
 
-# دریافت توکن
+# دریافت متغیر محیطی توکن
 TOKEN = os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
 
 # لیست نمادهای معتبر فاز ۱
 ALLOWED_SYMBOLS = {"BTCUSDT", "ETHUSDT", "SOLUSDT", "XAUUSD", "EURUSD"}
 
-# --- ساختار هسته ریسک و ستاپ معاملات ---
+# ژورنال معاملات در حافظه موقت
+TRADE_JOURNAL: list[dict] = []
+
+# --- ساختار هسته ریسک ---
 @dataclass
 class TradeSetup:
     symbol: str
@@ -45,8 +48,8 @@ class RiskEngine:
 
     @classmethod
     def evaluate(cls, symbol: str, side: str, entry: float, sl: float, tp: float) -> TradeSetup:
-        sym = symbol.upper()
-        s = side.upper()
+        sym = symbol.upper().strip()
+        s = side.upper().strip()
         setup = TradeSetup(symbol=sym, side=s, entry=entry, stop_loss=sl, take_profit=tp)
 
         if sym not in ALLOWED_SYMBOLS:
@@ -54,24 +57,24 @@ class RiskEngine:
             return setup
 
         if s not in ["BUY", "SELL"]:
-            setup.rejection_reason = "جهت معامله فقط باید BUY یا SELL باشد."
+            setup.rejection_reason = "جهت معامله فقط می‌تواند BUY یا SELL باشد."
             return setup
 
         if s == "BUY":
             if sl >= entry:
-                setup.rejection_reason = "در پوزیشن BUY، حد ضرر باید پایین‌تر از قیمت ورود باشد."
+                setup.rejection_reason = "در پوزیشن BUY، حد ضرر (SL) باید کمتر از قیمت ورود باشد."
                 return setup
             if tp <= entry:
-                setup.rejection_reason = "در پوزیشن BUY، تارگت سود باید بالاتر از قیمت ورود باشد."
+                setup.rejection_reason = "در پوزیشن BUY، حد سود (TP) باید بیشتر از قیمت ورود باشد."
                 return setup
             risk = entry - sl
             reward = tp - entry
-        else:
+        else:  # SELL
             if sl <= entry:
-                setup.rejection_reason = "در پوزیشن SELL، حد ضرر باید بالاتر از قیمت ورود باشد."
+                setup.rejection_reason = "در پوزیشن SELL، حد ضرر (SL) باید بیشتر از قیمت ورود باشد."
                 return setup
             if tp >= entry:
-                setup.rejection_reason = "در پوزیشن SELL، تارگت سود باید پایین‌تر از قیمت ورود باشد."
+                setup.rejection_reason = "در پوزیشن SELL، حد سود (TP) باید کمتر از قیمت ورود باشد."
                 return setup
             risk = sl - entry
             reward = entry - tp
@@ -86,16 +89,16 @@ class RiskEngine:
         setup.risk_reward_ratio = rr
 
         if rr < cls.MIN_RR_RATIO:
-            setup.rejection_reason = f"نسبت ریسک به ریوارد ۱ به {rr} است که کمتر از حداقل مجاز (۱ به ۲.۰) است.\n🚫 ورود به دلیل ریسک نامتعارف و نقض قوانین ضد FOMO مسدود شد."
+            setup.rejection_reason = (
+                f"نسبت ریسک به ریوارد ۱ به {rr} است که کمتر از حد مجاز (۱ به ۲.۰) است.\n"
+                "🚫 ورود به دلیل عدم توجیه منطقی و نقض فیلتر ضد هیجان (Anti-FOMO) مسدود شد."
+            )
             return setup
 
         setup.is_valid = True
         return setup
 
-# دفترچه ثبت معاملات در حافظه
-TRADE_JOURNAL: list[dict] = []
-
-# --- سرور Keep Alive برای رندر ---
+# --- وب‌سرور برای زنده نگه داشتن در رندر ---
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -115,78 +118,77 @@ def run_web_server():
 def get_main_menu():
     keyboard = [
         [
-            InlineKeyboardButton("📊 راهنمای ثبت معامله", callback_data="menu_trade"),
-            InlineKeyboardButton("📓 ژورنال معاملات", callback_data="menu_journal")
+            InlineKeyboardButton("📊 راهنمای ثبت ستاپ", callback_data="btn_trade_help"),
+            InlineKeyboardButton("📓 ژورنال معاملات", callback_data="btn_journal")
         ],
         [
-            InlineKeyboardButton("🛡 قوانین و مرامنامه ریسک", callback_data="menu_rules"),
-            InlineKeyboardButton("🏓 وضعیت سرور (Ping)", callback_data="menu_ping")
+            InlineKeyboardButton("🛡 مرامنامه مدیریت ریسک", callback_data="btn_rules"),
+            InlineKeyboardButton("🏓 وضعیت سرور (Ping)", callback_data="btn_ping")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
 
-# --- دستورات اصلی تلگرام ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    welcome_text = (
-        "🦅 **به هسته معاملاتی Robo7Alvand خوش آمدید**\n\n"
-        "این سیستم با اتکا به تحلیل داده‌محور، فیلترهای ضد هیجان (Anti-FOMO) و پایبندی به اصول حفظ سرمایه طراحی شده است.\n\n"
-        "🎯 **پوشش بازارها:** کریپتوکارنسی (BTC, ETH, SOL) و فارکس (XAUUSD, EURUSD)\n"
-        "🛡 **مدیریت ریسک:** حداقل R:R ۱:۲ | بدون مارتینگل | ثبت دقیق در ژورنال\n\n"
-        "از منوی زیر فرمان مورد نظرتان را انتخاب کنید:"
-    )
-    if update.message:
-        await update.message.reply_text(welcome_text, reply_markup=get_main_menu(), parse_mode="Markdown")
+# متن‌های بخش‌های مختلف
+TEXT_RULES = (
+    "🛡 **مرامنامه انضباط معاملاتی و مدیریت ریسک Robo7Alvand:**\n\n"
+    "۱. **حداقل نسبت R:R معادل ۱:۲:** سیستم اجازه ورود به معاملاتی که پاداش آن‌ها کمتر از دو برابر ریسک است را نمی‌دهد.\n"
+    "۲. **ممنوعیت کامل مارتینگل:** افزایش حجم در ضرر تحت هیچ شرایطی پذیرفته نیست.\n"
+    "۳. **عدم ورود هیجانی و اورترید:** ستاپ فقط در سطوح تایید شده ساختار بازار بررسی می‌شود.\n"
+    "۴. **حفظ اصل سرمایه اولویت اول است:** هر معامله صرفاً یک احتمال است، نه تضمین."
+)
 
-async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = "🏓 **PONG!** هسته تحلیلی ربات فعال و وب‌سرویس پایش پایدار است."
-    if update.message:
-        await update.message.reply_text(msg, parse_mode="Markdown")
-    elif update.callback_query:
-        await update.callback_query.message.reply_text(msg, parse_mode="Markdown")
+TEXT_TRADE_HELP = (
+    "📊 **راهنمای ثبت ستاپ معامله در سیستم:**\n\n"
+    "فرمت ارسال دستور:\n"
+    "`/trade [نماد] [BUY/SELL] [قیمت ورود] [حد ضرر] [تارگت سود]`\n\n"
+    "🔹 **نمونه کریپتو:**\n"
+    "`/trade BTCUSDT BUY 64000 63500 65500`\n\n"
+    "🔹 **نمونه فارکس:**\n"
+    "`/trade XAUUSD SELL 2650 2660 2625`"
+)
 
-async def rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    target = update.message or update.callback_query.message
-    rules_text = (
-        "🛡 **مرامنامه انضباط مالی و مدیریت ریسک Robo7Alvand:**\n\n"
-        "۱. **حداقل R:R ۱:۲:** هیچ پوزیشنی با سود احتمالی کمتر از دو برابر حدضرر تایید نخواهد شد.\n"
-        "۲. **ممنوعیت کامل مارتینگل:** دو برابر کردن حجم در ضرر خط قرمز مطلق است.\n"
-        "۳. **عدم ورود در میانه رنج (Mid-Range):** ورود فقط در سطوح تایید شده و واکنش معتبر به نواحی عرضه و تقاضا.\n"
-        "۴. **حفظ سرمایه:** اولویت سیستم در گام اول بقا و صیانت از دارایی، و در گام دوم کسب سود است."
-    )
-    await target.reply_text(rules_text, parse_mode="Markdown")
-
-async def journal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    target = update.message or update.callback_query.message
+def get_journal_text() -> str:
     if not TRADE_JOURNAL:
-        await target.reply_text("📓 هنوز هیچ معامله تایید‌شده‌ای در ژورنال ثبت نشده است.")
-        return
-
+        return "📓 هنوز هیچ معامله تایید‌شده‌ای در ژورنال ثبت نشده است."
     report = "📓 **دفترچه معاملات اخیر (تایید شده):**\n\n"
     for i, t in enumerate(TRADE_JOURNAL[-5:], 1):
         report += (
             f"*{i}. {t['symbol']}* ({t['side']})\n"
-            f"🔹 نقطه ورود: `{t['entry']}`\n"
+            f"🔹 ورود: `{t['entry']}`\n"
             f"🛑 حد ضرر: `{t['sl']}` | 🎯 تارگت: `{t['tp']}`\n"
-            f"📊 نسبت ریسک/ریوارد: `1:{t['rr']}`\n"
+            f"⚖️ نسبت R:R: `1:{t['rr']}`\n"
             "──────────────────\n"
         )
-    await target.reply_text(report, parse_mode="Markdown")
+    return report
 
-async def trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- هندلرهای تلگرام ---
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    welcome = (
+        "🦅 **به هسته تحلیلی و معاملاتی Robo7Alvand خوش آمدید**\n\n"
+        "این سیستم بر پایه انضباط، فیلترهای ضد هیجان (Anti-FOMO) و پایبندی به بقای سرمایه فعال است.\n\n"
+        "🎯 **پوشش بازارها:** کریپتوکارنسی (BTC, ETH, SOL) و فارکس (XAUUSD, EURUSD)\n"
+        "🛡 **کنترل ریسک:** حداقل R:R ۱:۲ | بدون مارتینگل | ژورنال خودکار\n\n"
+        "یکی از گزینه‌های زیر را انتخاب کنید:"
+    )
+    await update.message.reply_text(welcome, reply_markup=get_main_menu(), parse_mode="Markdown")
+
+async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🏓 **PONG!** ارتباط فعال و سرویس در وضعیت پایدار است.", parse_mode="Markdown")
+
+async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(TEXT_RULES, parse_mode="Markdown")
+
+async def journal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(get_journal_text(), parse_mode="Markdown")
+
+async def trade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 5:
-        await update.message.reply_text(
-            "⚠️ **الگوی ارسال ستاپ:**\n\n"
-            "`/trade [نماد] [BUY/SELL] [قیمت ورود] [حد ضرر] [تارگت سود]`\n\n"
-            "🔹 **مثال کریپتو:**\n"
-            "`/trade BTCUSDT BUY 64000 63500 65500`\n\n"
-            "🔹 **مثال فارکس:**\n"
-            "`/trade XAUUSD SELL 2650 2660 2625`",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text(TEXT_TRADE_HELP, parse_mode="Markdown")
         return
 
     try:
-        sym, side = context.args[0], context.args[1]
+        sym = context.args[0]
+        side = context.args[1]
         entry = float(context.args[2])
         sl = float(context.args[3])
         tp = float(context.args[4])
@@ -212,67 +214,65 @@ async def trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"✅ **ستاپ معاملاتی تایید و در ژورنال ثبت شد.**\n\n"
             f"💎 نماد: *{setup.symbol}* ({setup.side})\n"
-            f"📍 ورود: `{setup.entry}`\n"
-            f"🛑 حد ضرر (SL): `{setup.stop_loss}` (فاصله: {setup.risk_amount})\n"
-            f"🎯 حد سود (TP): `{setup.take_profit}` (فاصله: {setup.reward_amount})\n"
-            f"⚖️ **نسبت ریسک به ریوارد:** `1:{setup.risk_reward_ratio}`\n\n"
-            "📌 لطفاً دقیقاً بر اساس پلن مدیریت پوزیشن عمل کنید.",
+            f"📍 قیمت ورود: `{setup.entry}`\n"
+            f"🛑 حد ضرر: `{setup.stop_loss}` (ریسک: {setup.risk_amount})\n"
+            f"🎯 تارگت سود: `{setup.take_profit}` (ریوارد: {setup.reward_amount})\n"
+            f"⚖️ **نسبت R:R:** `1:{setup.risk_reward_ratio}`\n\n"
+            "📌 با تعهد کامل به استراتژی وارد شوید.",
             parse_mode="Markdown"
         )
 
     except ValueError:
-        await update.message.reply_text("⚠️ لطفاً مقادیر قیمت، حد ضرر و تارگت را به درستی و عددی وارد کنید.")
+        await update.message.reply_text("⚠️ مقادیر ورود، حد ضرر و تارگت سود باید حتماً عددی باشند.")
 
-# --- کال‌بک دکمه‌های شیشه‌ای ---
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# هندلر کلیک دکمه‌های شیشه‌ای
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    await query.answer()  # پاسخ به تلگرام جهت حذف ساعت شنی لودینگ روی دکمه
 
-    if query.data == "menu_ping":
-        await ping(update, context)
-    elif query.data == "menu_journal":
-        await journal(update, context)
-    elif query.data == "menu_rules":
-        await rules(update, context)
-    elif query.data == "menu_trade":
-        guide = (
-            "📊 **نحوه ثبت معامله در سیستم:**\n\n"
-            "دستور را همراه با مشخصات ستاپ به شکل زیر ارسال کنید:\n\n"
-            "`/trade [نماد] [BUY/SELL] [ورود] [SL] [TP]`\n\n"
-            "مثال:\n"
-            "`/trade BTCUSDT BUY 64000 63500 65500`"
-        )
-        await query.message.reply_text(guide, parse_mode="Markdown")
+    data = query.data
+    if data == "btn_ping":
+        await query.message.reply_text("🏓 **PONG!** ارتباط فعال و سرویس در وضعیت پایدار است.", parse_mode="Markdown")
+    elif data == "btn_rules":
+        await query.message.reply_text(TEXT_RULES, parse_mode="Markdown")
+    elif data == "btn_journal":
+        await query.message.reply_text(get_journal_text(), parse_mode="Markdown")
+    elif data == "btn_trade_help":
+        await query.message.reply_text(TEXT_TRADE_HELP, parse_mode="Markdown")
 
-# --- مدیریت خطای سراسری ---
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.error("خطا در هنگام پردازش درخواست:", exc_info=context.error)
+    logger.error("خطا در پردازش رویداد:", exc_info=context.error)
 
-# --- اجرای برنامه ---
-async def run_bot():
+# تابع اصلی
+async def main():
     app = Application.builder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("ping", ping))
-    app.add_handler(CommandHandler("journal", journal))
-    app.add_handler(CommandHandler("rules", rules))
-    app.add_handler(CommandHandler("trade", trade))
-    app.add_handler(CallbackQueryHandler(callback_handler))
+    # ثبت هندلرهای دستورات متنی
+    app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("ping", ping_command))
+    app.add_handler(CommandHandler("journal", journal_command))
+    app.add_handler(CommandHandler("rules", rules_command))
+    app.add_handler(CommandHandler("trade", trade_command))
+
+    # ثبت هندلر دکمه‌های شیشه‌ای
+    app.add_handler(CallbackQueryHandler(button_handler))
+
+    # ثبت مدیریت خطا
     app.add_error_handler(error_handler)
 
     async with app:
         await app.start()
         await app.updater.start_polling(drop_pending_updates=True)
-        logger.info("ربات Robo7Alvand با موفقیت استارت خورد.")
+        logger.info("Robo7Alvand با موفقیت استارت شد و آماده پاسخگویی است.")
         while True:
             await asyncio.sleep(3600)
 
 if __name__ == "__main__":
     if not TOKEN:
-        raise ValueError("BOT_TOKEN تعریف نشده است!")
+        raise ValueError("BOT_TOKEN یافت نشد!")
 
-    # اجرای وب‌سرور در ترد مجزا جهت پایدار نگه‌داشتن سرور رندر
+    # اجرای وب‌سرور سبک در پس‌زمینه
     threading.Thread(target=run_web_server, daemon=True).start()
 
-    # اجرای رویداد تلگرام
-    asyncio.run(run_bot())
+    # اجرای حلقه اصلی
+    asyncio.run(main())
