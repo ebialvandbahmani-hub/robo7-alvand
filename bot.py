@@ -54,15 +54,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ۳. دستور /ping
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🏓 پونگ! سیستم کاملاً آنلاین، پایدار و آماده دریافت دستورات است.")
+    await update.message.reply_text("🏓 پونگ! سیستم کاملاً آنلاین و پایدار است.")
 
-# ۴. موتور ثبت ستاپ معاملاتی و تحلیل ریسک (Anti-FOMO)
+# ۴. ثبت ستاپ و کنترل ریسک
 async def trade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if len(args) != 5:
         await update.message.reply_text(
-            "⚠️ فرمت دستور اشتباه است!\n"
-            "الگو: /trade [نماد] [BUY/SELL] [قیمت ورود] [حد ضرر] [حد سود]\n"
+            "⚠️ الگو: /trade [نماد] [BUY/SELL] [ورود] [حد ضرر] [حد سود]\n"
             "مثال: /trade BTCUSDT BUY 64000 63000 66500"
         )
         return
@@ -71,7 +70,7 @@ async def trade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     side = args[1].upper()
 
     if side not in ["BUY", "SELL"]:
-        await update.message.reply_text("❌ نوع معامله فقط باید BUY یا SELL باشد.")
+        await update.message.reply_text("❌ نوع معامله فقط BUY یا SELL است.")
         return
 
     try:
@@ -79,7 +78,6 @@ async def trade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sl = float(args[3])
         tp = float(args[4])
 
-        # محاسبه ریسک به ریوارد (R:R)
         if side == "BUY":
             risk = entry - sl
             reward = tp - entry
@@ -88,23 +86,21 @@ async def trade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reward = entry - tp
 
         if risk <= 0 or reward <= 0:
-            await update.message.reply_text("❌ مقادیر حد ضرر یا حد سود منطقی نیستند! لطفاً اعداد را چک کنید.")
+            await update.message.reply_text("❌ حد ضرر یا حد سود نامعتبر است.")
             return
 
         rr_ratio = round(reward / risk, 2)
 
-        # فیلتر سخت‌گیرانه ضد فومو
         if rr_ratio < 2.0:
             result = (
-                f"🚫 ستاپ معامله {symbol} رد شد! (نقض قوانین مدیریت ریسک)\n\n"
+                f"🚫 ستاپ معامله {symbol} رد شد!\n\n"
                 f"نسبت R:R محاسبه‌شده: 1:{rr_ratio}\n"
-                f"حداقل R:R مجاز: 1:2.0\n"
-                f"⚠️ اجازه ورود ندارید؛ این معامله ریسک به ریوارد منطقی ندارد."
+                f"حداقل مجاز: 1:2.0\n"
+                f"⚠️ ریسک به ریوارد غیرمنطقی است."
             )
             await update.message.reply_text(result)
             return
 
-        # تایید ستاپ و ثبت در دفترچه
         record = {
             "time": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
             "symbol": symbol,
@@ -117,28 +113,25 @@ async def trade_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         TRADE_JOURNAL.append(record)
 
         confirmation = (
-            f"✅ ستاپ معاملاتی تایید و در دفترچه ثبت شد!\n\n"
+            f"✅ ستاپ تایید و در دفترچه ثبت شد!\n\n"
             f"نماد: {symbol} ({side})\n"
-            f"نقطه ورود: {entry}\n"
-            f"حد ضرر (SL): {sl}\n"
-            f"حد سود (TP): {tp}\n"
-            f"نسبت سود به زیان: 1:{rr_ratio} 🔥\n\n"
-            f"💡 قانون طلایی: پایبند به حد ضرر باشید و حجم را دو برابر نکنید!"
+            f"ورود: {entry} | SL: {sl} | TP: {tp}\n"
+            f"نسبت R:R معامله: 1:{rr_ratio}"
         )
         await update.message.reply_text(confirmation)
 
     except ValueError:
-        await update.message.reply_text("❌ اعداد قیمت را به صورت انگلیسی و صحیح وارد کنید.")
+        await update.message.reply_text("❌ اعداد قیمت را به انگلیسی وارد کنید.")
     except Exception as e:
-        logger.error(f"Error in trade: {e}")
+        logger.error(f"Error: {e}")
 
-# ۵. دفترچه ژورنال معاملات
+# ۵. دفترچه ژورنال
 async def journal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not TRADE_JOURNAL:
-        await update.message.reply_text("📓 دفترچه معاملات فعلاً خالی است.")
+        await update.message.reply_text("📓 دفترچه معاملات خالی است.")
         return
 
-    text = "📓 دفترچه ستاپ‌های معاملاتی تایید شده:\n\n"
+    text = "📓 دفترچه ستاپ‌های معاملاتی:\n\n"
     for idx, item in enumerate(TRADE_JOURNAL[-5:], 1):
         text += (
             f"{idx}. [{item['time']}] {item['symbol']} | {item['side']}\n"
@@ -150,13 +143,11 @@ async def journal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     token = os.environ.get("BOT_TOKEN", "").strip()
     if not token:
-        logger.error("BOT_TOKEN is GAPGPTMASKTOKENz9k9es43aegX0X")
+        logger.error("BOT_TOKEN is GAPGPTMASKTOKENmr0mv8g4nfoX0X")
         return
 
-    # استارت سرور کیپ‌الایو
     threading.Thread(target=run_server, daemon=True).start()
 
-    # استارت بات تلگرام
     application = ApplicationBuilder().token(token).build()
 
     application.add_handler(CommandHandler("start", start_command))
