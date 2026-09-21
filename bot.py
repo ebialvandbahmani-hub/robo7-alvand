@@ -19,7 +19,7 @@ from telegram.ext import (
 )
 
 # -------------------------------------------------------------
-# ۱. تنظیمات اولیه لاگ و توکن
+# ۱. تنظیمات اولیه لاگ و متغیرها
 # -------------------------------------------------------------
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -27,19 +27,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger("Robo7Alvand")
 
-# توکن ربات از متغیرهای محیطی یا مستقیم
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8033221517:AAHfq4qVa_hJet60QnyG-p-yRyXuTN4jLWE")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "GAPGPTMASKTOKENcvpgdps5ilgX0X")
 PORT = int(os.environ.get("PORT", 8080))
 DB_PATH = "robo7alvand.db"
 
 # -------------------------------------------------------------
-# ۲. پایگاه داده (SQLite)
+# ۲. مدیریت پایگاه داده (SQLite)
 # -------------------------------------------------------------
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     
-    # جدول کاربران
+    # جدول ثبت مشخصات کاربران
     c.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -99,7 +98,7 @@ def save_user(user_id, **kwargs):
     conn.close()
 
 # -------------------------------------------------------------
-# ۳. کیبوردهای اصلی سیستم
+# ۳. کیبوردهای سیستم
 # -------------------------------------------------------------
 def main_menu_keyboard():
     keyboard = [
@@ -117,7 +116,7 @@ def market_menu_keyboard():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 # -------------------------------------------------------------
-# ۴. وب‌سرور برای زنده نگه داشتن سرور در Render (Health Check)
+# ۴. وب‌سرور برای زنده نگه داشتن سرویس در Render
 # -------------------------------------------------------------
 async def handle_health_check(request):
     return web.Response(text="Robo7Alvand Core is ACTIVE and Running!")
@@ -133,7 +132,7 @@ async def start_web_server():
     logger.info(f"✅ Web server successfully bound to port {PORT}")
 
 # -------------------------------------------------------------
-# ۵. هندلر استارت و ثبت‌نام کاربر
+# ۵. دستور /start و مراحل Onboarding
 # -------------------------------------------------------------
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -142,67 +141,80 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user or user[6] != 'COMPLETED':
         save_user(user_id, step='NAME')
         await update.message.reply_text(
-            "👋 درود به سامانه معاملاتی **Robo7Alvand** خوش آمدید.\n\n"
-            "جهت تنظیم دقیق موتور مدیریت ریسک و پرتفوی، لطفاً نام و نام‌خانوادگی خود را ارسال فرمایید:",
+            "👋 درود! به سامانه معاملاتی **Robo7Alvand** خوش آمدید.\n\n"
+            "جهت تنظیم دقیق موتور مدیریت ریسک، لطفاً نام و نام‌خانوادگی خود را ارسال فرمایید:",
             reply_markup=ReplyKeyboardRemove()
         )
     else:
         await update.message.reply_text(
             f"سلام {user[1]} عزیز! 🦅\n"
-            "سیستم آماده است. بازار تحت نظر است و رادارهای مدیریت ریسک فعال هستند.",
+            "سیستم فعال است و بازار تحت رصد قرار دارد.",
             reply_markup=main_menu_keyboard()
         )
 
 # -------------------------------------------------------------
-# ۶. مدیریت پیام‌های متنی و منطق معاملات
+# ۶. دریافت شماره تماس و مدیریت پیام‌های متنی
 # -------------------------------------------------------------
 async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     contact = update.message.contact
     if contact:
-        save_user(user_# -------------------------------------------------------------
-async def handle_health_check(request):
-    return web.Response(text="Robo7Alvand Core is ACTIVE and Running!")
+        save_user(user_id, phone=contact.phone_number, step='MARKET')
+        market_kb = [["فارکس (Forex)", "کریپتو (Crypto)"], ["هر دو بازار"]]
+        await update.message.reply_text(
+            "✅ شماره شما ثبت شد.\n\nتمرکز معاملاتی شما بیشتر روی کدام بازار است؟",
+            reply_markup=ReplyKeyboardMarkup(market_kb, resize_keyboard=True, one_time_keyboard=True)
+        )
 
-async def start_web_server():
-    server_app = web.Application()
-    server_app.router.add_get("/", handle_health_check)
-    server_app.router.add_get("/health", handle_health_check)
-    runner = web.AppRunner(server_app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-    logger.info(f"✅ Web server successfully bound to port {PORT}")
-
-# -------------------------------------------------------------
-# ۵. هندلر استارت و ثبت‌نام کاربر
-# -------------------------------------------------------------
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    text = update.message.text.strip()
     user = get_user(user_id)
 
-    if not user or user[6] != 'COMPLETED':
+    if not user:
         save_user(user_id, step='NAME')
-        await update.message.reply_text(
-            "👋 درود به سامانه معاملاتی **Robo7Alvand** خوش آمدید.\n\n"
-            "جهت تنظیم دقیق موتور مدیریت ریسک و پرتفوی، لطفاً نام و نام‌خانوادگی خود را ارسال فرمایید:",
-            reply_markup=ReplyKeyboardRemove()
-        )
-    else:
-        await update.message.reply_text(
-            f"سلام {user[1]} عزیز! 🦅\n"
-            "سیستم آماده است. بازار تحت نظر است و رادارهای مدیریت ریسک فعال هستند.",
-            reply_markup=main_menu_keyboard()
-        )
+        await update.message.reply_text("لطفاً نام و نام‌خانوادگی خود را وارد کنید:")
+        return
 
-# -------------------------------------------------------------
-# ۶. مدیریت پیام‌های متنی و منطق معاملات
-# -------------------------------------------------------------
-async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    contact = update.message.contact
-    if contact:
-        save_user(user_ITAL')
+    step = user[6]
+
+    # مرحله ۱: دریافت نام
+    if step == 'NAME':
+        save_user(user_id, name=text, step='PHONE')
+        contact_kb = ReplyKeyboardMarkup(
+            [[KeyboardButton("📱 ارسال شماره تماس", request_contact=True)]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+        await update.message.reply_text(
+            f"ممنون {text} عزیز.\nجهت ثبت در باشگاه تریدرها، شماره تماس خود را ارسال کنید یا بنویسید:",
+            reply_markup=contact_kb
+        )
+        return
+
+    # مرحله ۲: دریافت شماره تماس به صورت متنی
+    elif step == 'PHONE':
+        save_user(user_id, phone=text, step='MARKET')
+        market_kb = [["فارکس (Forex)", "کریپتو (Crypto)"], ["هر دو بازار"]]
+        await update.message.reply_text(
+            "تمرکز معاملاتی شما بیشتر روی کدام بازار است؟",
+            reply_markup=ReplyKeyboardMarkup(market_kb, resize_keyboard=True, one_time_keyboard=True)
+        )
+        return
+
+    # مرحله ۳: انتخاب بازار
+    elif step == 'MARKET':
+        save_user(user_id, market=text, step='LEVEL')
+        level_kb = [["مبتدی (زیر ۶ ماه)", "متوسط (۶ ماه تا ۲ سال)"], ["حرفه‌ای (بیش از ۲ سال)"]]
+        await update.message.reply_text(
+            "سطح تجربه و تسلط شما در تحلیل و ترید چقدر است؟",
+            reply_markup=ReplyKeyboardMarkup(level_kb, resize_keyboard=True, one_time_keyboard=True)
+        )
+        return
+
+    # مرحله ۴: انتخاب سطح
+    elif step == 'LEVEL':
+        save_user(user_id, level=text, step='CAPITAL')
         cap_kb = [["زیر ۱,۰۰۰ دلار", "۱,۰۰۰ تا ۱۰,۰۰۰ دلار"], ["بالای ۱۰,۰۰۰ دلار"]]
         await update.message.reply_text(
             "محدوده تقریبی سرمایه در گردش شما چقدر است؟ (جهت کالیبراسیون حجم ورود و ریسک)",
@@ -210,6 +222,7 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # مرحله ۵: انتخاب سرمایه و اتمام ثبت‌نام
     elif step == 'CAPITAL':
         save_user(user_id, capital=text, step='COMPLETED')
         await update.message.reply_text(
@@ -221,7 +234,7 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # پردازش منوها در صورت تکمیل ثبت‌نام
+    # --- بخش‌های منوی اصلی و تالار معاملات ---
     if text == "🔙 بازگشت به منوی اصلی":
         await update.message.reply_text("منوی اصلی سیستم:", reply_markup=main_menu_keyboard())
 
@@ -268,9 +281,9 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "📝 ژورنال هوشمند":
         msg = (
             "📖 **دفترچه ژورنال معاملاتی:**\n\n"
-            "برای ثبت معامله جدید، فرمت زیر را به سادگی ارسال کنید:\n"
+            "برای ثبت معامله جدید، فرمت زیر را ارسال کنید:\n"
             "`ثبت BTC LONG ورود 63000 حدضرر 62500 حدسود 65000`\n\n"
-            "موتور هوشمند ربات بعد از ۲۰ دقیقه یادآور وضعیت معامله را برای شما ارسال خواهد کرد."
+            "موتور هوشمند ربات وضعیت معامله را پایش و در گزارش عملکرد ذخیره می‌کند."
         )
         await update.message.reply_text(msg, reply_markup=main_menu_keyboard())
 
@@ -300,7 +313,7 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = (
             "⚙️ **وضعیت سیستم و سرور:**\n\n"
             "• هسته پردازش: Robo7Alvand Core v2\n"
-            "• وضعیت وب‌سرور هلث‌چک: فعال روی پورت " + str(PORT) + "\n"
+            f"• وضعیت وب‌سرور هلث‌چک: فعال روی پورت {PORT}\n"
             "• اتصال به تلگرام: استیبل (Polling)\n"
             "• وضعیت دیتابیس: متصل (SQLite)"
         )
@@ -313,10 +326,10 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # -------------------------------------------------------------
-# ۷. راه‌اندازی با post_init (کامپتیبل با نسخه جدید PTB)
+# ۷. تابع post_init و نقطه ورود اصلی برنامه
 # -------------------------------------------------------------
 async def post_init(application: Application):
-    # راه‌اندازی همزمان وب‌سرور هلث‌چک
+    # راه‌اندازی وب‌سرور همگام با استارت بات
     await start_web_server()
 
 def main():
@@ -329,7 +342,7 @@ def main():
         .build()
     )
 
-    # افزودن هندلرها
+    # اتصال هندلرها
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
