@@ -25,12 +25,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger("Robo7Alvand")
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "GAPGPTMASKTOKENqejkdjrqdwkX0X")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "GAPGPTMASKTOKEN8xgkiug973cX0X")
 PORT = int(os.environ.get("PORT", 8080))
 DB_PATH = "robo7alvand.db"
 
-# دیتابیس ستاپ‌ها و تحلیل‌های تفکیک‌شده برای نمادهای اصلی
+# دیتابیس جامع ستاپ‌ها و تحلیل‌ها برای تمامی بازارها
 MARKET_DATA = {
+    # ۱. کریپتو
     "BTC": {
         "name": "بیت‌کوین (BTC/USDT)",
         "price": "63,450$",
@@ -49,8 +50,7 @@ MARKET_DATA = {
             "• روند کلی: صعودی تثبیت‌شده بالای میانگین متحرک ۲۰۰ روزه\n"
             "• حمایت‌های کلیدی: 62,500$ و 60,800$\n"
             "• مقاومت‌های پیش‌رو: 64,500$ و 66,000$\n"
-            "• شاخص قدرت نسبی (RSI): عدد 56 (حالت تعادل بدون اشباع خرید)\n"
-            "• ساختار فشرده‌سازی: الگوی وج صعودی در تایم ۴ ساعته\n"
+            "• شاخص RSI: عدد 56 (تعادل بدون اشباع خرید)\n"
             "• استراتژی الوند: ورود پله‌ای فقط در پولبک به سطوح حمایتی؛ پایبندی اکید به حد ضرر."
         )
     },
@@ -72,8 +72,7 @@ MARKET_DATA = {
             "• روند کلی: رنج متمایل به صعودی پس از شکست خط روند نزولی\n"
             "• حمایت اصلی: 2,580$ و 2,520$\n"
             "• مقاومت‌های مهم: 2,720$ و 2,850$\n"
-            "• حجم معاملات: در حال افزایش در کف‌های قیمتی\n"
-            "• استراتژی الوند: شکار پوزیشن‌های خرید نزدیک به حمایت ۲,۵۸۰ با حجم کنترل‌شده."
+            "• حجم معاملات: در حال افزایش در کف‌های قیمتی."
         )
     },
     "SOL": {
@@ -91,15 +90,16 @@ MARKET_DATA = {
         "analysis": (
             "📊 **تحلیل جامع تکنیکال SOL/USDT:**\n"
             "━━━━━━━━━━━━━━━━━━\n"
-            "• روند کلی: فاز انباشت و نوسان فشرده بین ۱۴۲ تا ۱۵۵ دلار\n"
+            "• روند کلی: فاز انباشت بین ۱۴۲ تا ۱۵۵ دلار\n"
             "• حمایت کلیدی: 142$\n"
             "• مقاومت کلیدی: 155$\n"
-            "• اندیکاتور MACD: فلت بدون سیگنال جهت‌دار قطعی\n"
-            "• استراتژی الوند: عدم معامله تا زمانی که کندل روزانه بالای ۱۵۵ یا زیر ۱۴۲ بسته شود."
+            "• استراتژی: عدم معامله تا خروج قطعی از باکس رنج."
         )
     },
+
+    # ۲. فلزات گرانبها و کامودیتی
     "XAUUSD": {
-        "name": "انس طلای جهانی (XAU/USD)",
+        "name": "انس طلا جهانی (XAU/USD)",
         "price": "2,625$",
         "setup": {
             "direction": "🔴 SHORT (اصلاحی با ریسک کنترل‌شده)",
@@ -108,18 +108,60 @@ MARKET_DATA = {
             "tp1": "2,615",
             "tp2": "2,600",
             "rr": "۱ به ۳.۲ ✅",
-            "note": "سایز پوزیشن نصف حد استاندارد؛ اخبار نرخ بهره فدرال رزرو مدنظر باشد."
+            "note": "سایز پوزیشن نصف حد استاندارد؛ مدیریت حجم اکیداً رعایت شود."
         },
         "analysis": (
-            "📊 **تحلیل جامع تکنیکال طلا (XAU/USD):**\n"
+            "📊 **تحلیل تکنیکال انس طلا (XAU/USD):**\n"
             "━━━━━━━━━━━━━━━━━━\n"
-            "• روند کلی: صعودی پرقدرت روزانه ولی نشانه‌های خستگی روند در تایم ۱ ساعته\n"
-            "• واگرایی: واگرایی منفی واضح در اندیکاتور RSI در سقف‌های قیمتی\n"
-            "• سطوح حمایت: 2,612 و 2,590\n"
-            "• مقاومت اصلی: محدوده روانی 2,640\n"
-            "• استراتژی الوند: پرهیز شدید از خرید در سقف تاریخی (قانون ضد فومو)؛ جستجوی پولبک برای ورود مطمئن‌تر."
+            "• روند روزانه: صعودی پرشتاب، اما با واگرایی منفی در تایم ۱ ساعته\n"
+            "• حمایت‌ها: 2,612 و 2,590\n"
+            "• مقاومت اصلی: 2,640\n"
+            "• استراتژی الوند: پرهیز از خرید در سقف؛ ورود فقط در پولبک یا سیگنال برگشتی شفاف."
         )
     },
+    "XAGUSD": {
+        "name": "انس نقره جهانی (XAG/USD)",
+        "price": "31.20$",
+        "setup": {
+            "direction": "🟢 LONG (خرید در پولبک)",
+            "entry": "30.80 - 31.00",
+            "sl": "30.35",
+            "tp1": "32.00",
+            "tp2": "32.80",
+            "rr": "۱ به ۲.۷ ✅",
+            "note": "نقره نوسانات شارپ‌تری نسبت به طلا دارد؛ حد ضرر را دقیق قرار دهید."
+        },
+        "analysis": (
+            "📊 **تحلیل تکنیکال انس نقره (Silver):**\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "• ساختار: شکست مقاومت مهم ۳۰ دلار و تبدیل آن به حمایت معتبر\n"
+            "• حمایت‌های کلیدی: 30.80$ و 30.10$\n"
+            "• اهداف قیمتی: 32.50$ و 34.00$\n"
+            "• نکته الوند: مومنتوم خریداران بسیار بالاست ولی برای ورود کم‌ریسک باید منتظر پولبک ماند."
+        )
+    },
+    "OIL": {
+        "name": "نفت خام وست تگزاس (WTI/Crude Oil)",
+        "price": "71.30$",
+        "setup": {
+            "direction": "🟢 LONG (حمایتی)",
+            "entry": "70.20 - 70.80",
+            "sl": "69.10",
+            "tp1": "73.50",
+            "tp2": "75.20",
+            "rr": "۱ به ۲.۶ ✅",
+            "note": "تحولات ژئوپلیتیکی خاورمیانه و تصمیمات اوپک‌پلاس رصد شود."
+        },
+        "analysis": (
+            "📊 **تحلیل تکنیکال نفت خام (WTI):**\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "• روند: شکل‌گیری کف قیمتی محکم در محدوده ۶۹ تا ۷۰ دلار\n"
+            "• مقاومت اصلی: 73.80$ و 76.50$\n"
+            "• استراتژی الوند: خرید فقط در نزدیکی کف کانال با رعایت دقیق استاپ‌لاس."
+        )
+    },
+
+    # ۳. جفت‌ارزهای فارکس
     "EURUSD": {
         "name": "یورو/دلار (EUR/USD)",
         "price": "1.1120",
@@ -133,13 +175,76 @@ MARKET_DATA = {
             "note": "تایید نهایی ورود همزمان با شروع همپوشانی نشست‌های لندن و نیویورک."
         },
         "analysis": (
-            "📊 **تحلیل جامع تکنیکال EUR/USD:**\n"
+            "📊 **تحلیل تکنیکال EUR/USD:**\n"
             "━━━━━━━━━━━━━━━━━━\n"
-            "• روند کلی: صعودی میان‌مدت، تثبیت بالای سطح روانی ۱.۱۱۰۰\n"
-            "• سطح حمایت معتبر: 1.1080\n"
+            "• روند میان‌مدت: صعودی و تثبیت بالای ۱.۱۱۰۰\n"
+            "• سطوح حمایت: 1.1080\n"
             "• مقاومت کلیدی: 1.1200\n"
-            "• رفتار قیمتی: تشکیل الگوی کف دوقلو در تایم ۴ ساعته\n"
-            "• استراتژی الوند: خرید در تست مجدد خط گردن در حوالی ۱.۱۱۰۰ با استاپ باریک."
+            "• رفتار قیمتی: تشکیل الگوی کف دوقلو در تایم ۴ ساعته."
+        )
+    },
+    "GBPUSD": {
+        "name": "پوند/دلار (GBP/USD)",
+        "price": "1.3310",
+        "setup": {
+            "direction": "🟢 LONG",
+            "entry": "1.3260 - 1.3280",
+            "sl": "1.3210",
+            "tp1": "1.3400",
+            "tp2": "1.3490",
+            "rr": "۱ به ۲.۵ ✅",
+            "note": "قدرت نسبی پوند در برابر دلار مشهود است؛ در کف‌های قیمتی لانگ بگیرید."
+        },
+        "analysis": (
+            "📊 **تحلیل تکنیکال پوند انگلیس (GBP/USD):**\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "• ساختار: سقف‌های بالاتر (Higher Highs) در تایم روزانه\n"
+            "• حمایت معتبر: 1.3250\n"
+            "• مقاومت روانی: 1.3400\n"
+            "• استراتژی: حفظ پوزیشن‌های خرید تا زمان حفظ خط روند صعودی."
+        )
+    },
+
+    # ۴. شاخص‌های بورس جهانی
+    "NASDAQ": {
+        "name": "شاخص نزدک آمریکا (NASDAQ / USTEC)",
+        "price": "19,850",
+        "setup": {
+            "direction": "🟢 LONG (ادامه‌دهنده)",
+            "entry": "19,720 - 19,780",
+            "sl": "19,580",
+            "tp1": "20,100",
+            "tp2": "20,350",
+            "rr": "۱ به ۲.۴ ✅",
+            "note": "پرهیز از ورود در دقایق ابتدایی بازگشایی نیویورک به دلیل نوسانات شدید."
+        },
+        "analysis": (
+            "📊 **تحلیل شاخص نزدک (NASDAQ):**\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "• روند: تثبیت مجدد در نزدیکی قله‌های تاریخی با هدایت سهام تکنولوژی\n"
+            "• حمایت حیاتی: 19,650\n"
+            "• مقاومت هدف: سقف روانی 20,000\n"
+            "• استراتژی: معامله در جهت روند صعودی فقط در اصلاح‌ها."
+        )
+    },
+    "DOWJONES": {
+        "name": "شاخص داوجونز (DJI / US30)",
+        "price": "42,150",
+        "setup": {
+            "direction": "⚪️ خنثی / بدون ستاپ معتبر",
+            "entry": "منتظر بمانید",
+            "sl": "--",
+            "tp1": "--",
+            "tp2": "--",
+            "rr": "فاقد R:R مجاز ⚠️",
+            "note": "بازار در سقف تاریخی اشباع شده و احتمال اصلاح شارپ وجود دارد. Anti-FOMO!"
+        },
+        "analysis": (
+            "📊 **تحلیل شاخص داوجونز (US30):**\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "• وضعیت: ثبت بالاترین سقف تاریخی ولی کاهش حجم در حرکات رو به بالا\n"
+            "• حمایت نخست: 41,800\n"
+            "• هشدار: ریسک خرید در این قیمت‌ها به ریوارد آن نمی‌ارزد."
         )
     }
 }
@@ -220,24 +325,40 @@ def market_menu_keyboard():
 
 def symbols_keyboard():
     keyboard = [
-        ["BTC (بیت‌کوین)", "ETH (اتریوم)"],
-        ["SOL (سولانا)", "XAUUSD (طلا)"],
-        ["EURUSD (یورو/دلار)", "🔙 بازگشت به تالار"]
+        ["🪙 BTC (بیت‌کوین)", "💎 ETH (اتریوم)", "⚡ SOL (سولانا)"],
+        ["🥇 XAUUSD (طلا)", "🥈 XAGUSD (نقره)", "🛢 WTI (نفت)"],
+        ["💶 EURUSD (یورو)", "💷 GBPUSD (پوند)"],
+        ["📈 NASDAQ (نزدک)", "📊 DOWJONES (داوجونز)"],
+        ["🔙 بازگشت به تالار"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def normalize_symbol(text: str):
     t = text.upper()
+    # کریپتو
     if "BTC" in t or "بیت" in t:
         return "BTC"
     elif "ETH" in t or "اتریوم" in t:
         return "ETH"
     elif "SOL" in t or "سولانا" in t:
         return "SOL"
+    # طلا، نقره و نفت
     elif "XAU" in t or "طلا" in t or "GOLD" in t:
         return "XAUUSD"
+    elif "XAG" in t or "نقره" in t or "SILVER" in t:
+        return "XAGUSD"
+    elif "OIL" in t or "نفت" in t or "WTI" in t:
+        return "OIL"
+    # جفت ارزها
     elif "EUR" in t or "یورو" in t:
         return "EURUSD"
+    elif "GBP" in t or "پوند" in t:
+        return "GBPUSD"
+    # شاخص‌ها
+    elif "NAS" in t or "نزدک" in t or "USTEC" in t:
+        return "NASDAQ"
+    elif "DOW" in t or "داوجونز" in t or "US30" in t:
+        return "DOWJONES"
     return None
 
 async def handle_health_check(request):
@@ -268,7 +389,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_user(user_id, step='COMPLETED')
         await update.message.reply_text(
             f"سلام {user[1]} عزیز! 🦅\n"
-            "سیستم فعال است و بازار تحت رصد قرار دارد.",
+            "سیستم فعال است و بازارها تحت رصد کامل قرار دارند.",
             reply_markup=main_menu_keyboard()
         )
 
@@ -277,7 +398,7 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact = update.message.contact
     if contact:
         save_user(user_id, phone=contact.phone_number, step='MARKET')
-        market_kb = [["فارکس (Forex)", "کریپتو (Crypto)"], ["هر دو بازار"]]
+        market_kb = [["فارکس و طلا (Forex/Gold)", "کریپتو (Crypto)"], ["تمامی بازارها (فارکس، کریپتو، کامودیتی)"]]
         await update.message.reply_text(
             "✅ شماره شما ثبت شد.\n\nتمرکز معاملاتی شما بیشتر روی کدام بازار است؟",
             reply_markup=ReplyKeyboardMarkup(market_kb, resize_keyboard=True, one_time_keyboard=True)
@@ -311,7 +432,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif step == 'PHONE':
         save_user(user_id, phone=text, step='MARKET')
-        market_kb = [["فارکس (Forex)", "کریپتو (Crypto)"], ["هر دو بازار"]]
+        market_kb = [["فارکس و طلا (Forex/Gold)", "کریپتو (Crypto)"], ["تمامی بازارها (فارکس، کریپتو، کامودیتی)"]]
         await update.message.reply_text(
             "تمرکز معاملاتی شما بیشتر روی کدام بازار است؟",
             reply_markup=ReplyKeyboardMarkup(market_kb, resize_keyboard=True, one_time_keyboard=True)
@@ -329,9 +450,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif step == 'LEVEL':
         save_user(user_id, level=text, step='CAPITAL')
-        cap_kb = [["زیر ۱,۰۰۰ دلار", "۱,۰۰۰ تا ۱۰,۰۰۰ دلار"], ["بالای ۱۰,۰۰۰ دلار"]]
+        # تنظیم مقادیر سرمایه بر اساس استاندارد خواسته شده
+        cap_kb = [["زیر ۵۰ دلار", "۵۰ تا ۲۰۰ دلار"], ["۲۰۰ تا ۵۰۰ دلار", "بالای ۵۰۰ دلار"]]
         await update.message.reply_text(
-            "محدوده تقریبی سرمایه در گردش شما چقدر است؟ (جهت کالیبراسیون حجم ورود و ریسک)",
+            "محدوده سرمایه معاملاتی شما چقدر است؟ (جهت تنظیم دقیق سایز لات و درصد ریسک در هر معامله)",
             reply_markup=ReplyKeyboardMarkup(cap_kb, resize_keyboard=True, one_time_keyboard=True)
         )
         return
@@ -341,13 +463,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "🎉 ثبت‌نام با موفقیت انجام شد!\n\n"
             "⚡️ سیستم مدیریت ریسک Anti-FOMO کالیبره گردید.\n"
-            "حداقل نسبت R:R مجاز: ۱ به ۲\n"
+            "• حداقل نسبت R:R مجاز: ۱ به ۲\n"
+            "• حداکثر ریسک مجاز در هر ترید: ۲ درصد سرمایه\n\n"
             "لطفاً یک بخش را انتخاب کنید:",
             reply_markup=main_menu_keyboard()
         )
         return
 
-    # منوها و ناوبری
+    # ناوبری و منوها
     if text == "🔙 بازگشت به منوی اصلی":
         save_user(user_id, step='COMPLETED')
         await update.message.reply_text("منوی اصلی سیستم:", reply_markup=main_menu_keyboard())
@@ -366,27 +489,29 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ۱. ورود به بخش ستاپ‌ها
+    # ۱. بخش ستاپ‌ها
     elif text == "🎯 ستاپ‌های معاملاتی":
         save_user(user_id, step='WAITING_SETUP_SYMBOL')
         await update.message.reply_text(
             "🎯 **بخش ستاپ‌های معاملاتی الگوریتم**\n\n"
-            "برای دریافت ستاپ، نماد مورد نظر خود را انتخاب کنید یا نام آن را بنویسید (BTC, ETH, طلا, SOL, EURUSD):",
+            "نماد مورد نظر خود را از کیبورد انتخاب کنید یا نام آن را بنویسید\n"
+            "(مثال: نقره، طلا، نفت، نزدک، داوجونز، پوند، یورو، بیت‌کوین و...):",
             reply_markup=symbols_keyboard()
         )
         return
 
-    # ۲. ورود به بخش تحلیل تکنیکال
+    # ۲. بخش تحلیل تکنیکال
     elif text == "📈 تحلیل تکنیکال":
         save_user(user_id, step='WAITING_ANALYSIS_SYMBOL')
         await update.message.reply_text(
             "📈 **بخش تحلیل جامع تکنیکال و رفتارشناسی بازار**\n\n"
-            "برای دریافت تحلیل، نماد مورد نظر خود را انتخاب کنید یا نام آن را بنویسید (BTC, ETH, طلا, SOL, EURUSD):",
+            "نماد مورد نظر خود را از کیبورد انتخاب کنید یا نام آن را بنویسید\n"
+            "(مثال: نقره، طلا، نفت، نزدک، داوجونز، پوند، یورو، بیت‌کوین و...):",
             reply_markup=symbols_keyboard()
         )
         return
 
-    # ۳. دریافت و نمایش ستاپ برای نماد انتخابی
+    # ۳. هندل کردن انتخاب ستاپ
     elif step == 'WAITING_SETUP_SYMBOL':
         sym = normalize_symbol(text)
         if sym and sym in MARKET_DATA:
@@ -410,13 +535,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(msg, reply_markup=symbols_keyboard())
         else:
             await update.message.reply_text(
-                "⚠️ نماد وارد شده در لیست فاز ۱ نیست یا نامعتبر است.\n"
-                "لطفاً یکی از دکمه‌های زیر را انتخاب کنید:",
+                "⚠️ نماد وارد شده پشتیبانی نمی‌شود یا نامعتبر است.\n"
+                "لطفاً یکی از دکمه‌های زیر را انتخاب کنید یا نام نماد را صحیح بنویسید:",
                 reply_markup=symbols_keyboard()
             )
         return
 
-    # ۴. دریافت و نمایش تحلیل برای نماد انتخابی
+    # ۴. هندل کردن انتخاب تحلیل
     elif step == 'WAITING_ANALYSIS_SYMBOL':
         sym = normalize_symbol(text)
         if sym and sym in MARKET_DATA:
@@ -424,8 +549,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(data["analysis"], reply_markup=symbols_keyboard())
         else:
             await update.message.reply_text(
-                "⚠️ نماد وارد شده در لیست فاز ۱ نیست یا نامعتبر است.\n"
-                "لطفاً یکی از دکمه‌های زیر را انتخاب کنید:",
+                "⚠️ نماد وارد شده پشتیبانی نمی‌شود یا نامعتبر است.\n"
+                "لطفاً یکی از دکمه‌های زیر را انتخاب کنید یا نام نماد را صحیح بنویسید:",
                 reply_markup=symbols_keyboard()
             )
         return
@@ -433,9 +558,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "📡 رادار بازار":
         msg = (
             "🛰 **رادار نوسان‌گیری و جریان پول هوشمند:**\n\n"
-            "• نمادهای دارای حجم غیرعادی: SOL, ETH\n"
-            "• نقدینگی خروجی از آلت‌کوین‌های ضعیف شناسایی شد.\n"
-            "• سیگنال رادار: صبر تا تکمیل کندل روزانه."
+            "• کامودیتی‌ها: فلزات گرانبها (طلا و نقره) با جریان ورودی قوی روبه‌رو هستند.\n"
+            "• شاخص‌ها: نزدک در فاز تثبیت مثبت؛ داوجونز در سقف تاریخی و پرریسک.\n"
+            "• کریپتو: حجم سولانا و بیت‌کوین در حال رنج‌سازی.\n"
+            "• سیگنال کلی: ورود پله‌ای فقط در حمایت‌های قید شده."
         )
         await update.message.reply_text(msg, reply_markup=market_menu_keyboard())
 
@@ -443,7 +569,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = (
             "📖 **دفترچه ژورنال معاملاتی:**\n\n"
             "برای ثبت معامله جدید، فرمت زیر را ارسال کنید:\n"
-            "`ثبت BTC LONG ورود 63000 حدضرر 62500 حدسود 65000`\n\n"
+            "`ثبت XAUUSD BUY ورود 2630 حدضرر 2620 حدسود 2650`\n\n"
             "موتور هوشمند ربات وضعیت معامله را پایش و در گزارش عملکرد ذخیره می‌کند."
         )
         await update.message.reply_text(msg, reply_markup=main_menu_keyboard())
@@ -465,7 +591,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• شماره تماس: {user[2]}\n"
             f"• بازار هدف: {user[3]}\n"
             f"• سطح مهارت: {user[4]}\n"
-            f"• سرمایه تقریبی: {user[5]}\n"
+            f"• سرمایه معاملاتی: {user[5]}\n"
             f"• وضعیت حساب: تایید شده و فعال 🟢"
         )
         await update.message.reply_text(msg, reply_markup=main_menu_keyboard())
@@ -473,9 +599,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "⚙️ وضعیت سیستم":
         msg = (
             "⚙️ **وضعیت سیستم و سرور:**\n\n"
-            "• هسته پردازش: Robo7Alvand Core v2.1\n"
-            f"• وضعیت وب‌سرور هلث‌چک: فعال روی پورت {PORT}\n"
-            "• اتصال به تلگرام: استیبل (Polling)\n"
+            "• هسته پردازش: Robo7Alvand Core v2.2\n"
+            f"• وب‌سرور هلث‌چک: فعال روی پورت {PORT}\n"
+            "• بازارهای فعال: کریپتو، فلزات (طلا/نقره)، نفت، جفت‌ارزها و شاخص‌ها\n"
             "• وضعیت دیتابیس: متصل (SQLite)"
         )
         await update.message.reply_text(msg, reply_markup=main_menu_keyboard())
