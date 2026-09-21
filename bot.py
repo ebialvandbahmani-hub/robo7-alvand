@@ -5,8 +5,8 @@ import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# --- تنظیمات محیطی ---
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# --- خواندن توکن با هر دو اسم احتمالی ---
+TOKEN = os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
 
 # --- دفترچه ثبت معاملات (در حافظه) ---
 journal = []
@@ -64,7 +64,6 @@ async def journal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # فرمت: /trade BTCUSDT BUY 64000 63500 65500
     if len(context.args) < 5:
         await update.message.reply_text(
             "⚠️ فرمت صحیح دستور:\n"
@@ -160,7 +159,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def run_bot():
     app = Application.builder().token(TOKEN).build()
 
-    # ثبت دستورات
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("ping", ping_cmd))
     app.add_handler(CommandHandler("journal", journal_cmd))
@@ -176,11 +174,9 @@ async def run_bot():
 
 if __name__ == "__main__":
     if not TOKEN:
-        raise ValueError("TELEGRAM_BOT_TOKEN environment variable is not set!")
+        raise ValueError("BOT_TOKEN is not set!")
     
-    # اجرای وب‌سرور در ترد جداگانه
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
 
-    # اجرای ربات با استاندارد پایتون جدید
     asyncio.run(run_bot())
