@@ -1,220 +1,263 @@
-# -*- coding: utf-8 -*-
-"""
-Robo7Alvand - Telegram Trading Bot (Monolithic Version)
-All risk-engine functions integrated. No external module dependencies.
-"""
-
 import os
-import re
-import time
-import threading
-import requests
-from flask import Flask
-
-# ================= CONFIG =================
-BOT_TOKEN = os.getenv("BOT_TOKEN", "PUT_YOUR_TOKEN_HERE")
-PORT = int(os.environ.get("PORT", 8080))
-TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
-
-# Alias mapping for common symbols
-ALIASES = {
-    "بیت‌کوین": "BTCUSDT", "بیت کوین": "BTCUSDT", "btc": "BTCUSDT", "bitcoin": "BTCUSDT",
-    "اتریوم": "ETHUSDT", "eth": "ETHUSDT", "ethereum": "ETHUSDT",
-    "سولانا": "SOLUSDT", "sol": "SOLUSDT", "solana": "SOLUSDT",
-    "ترون": "TRXUSDT", "trx": "TRXUSDT", "tron": "TRXUSDT",
-    "دوج": "DOGEUSDT", "doge": "DOGEUSDT",
-    "کاردانو": "ADAUSDT", "ada": "ADAUSDT",
-    "طلا": "XAUUSD", "گلد": "XAUUSD", "xauusd": "XAUUSD", "gold": "XAUUSD",
-    "مارکت": "MARKET", "بازار": "MARKET", "market": "MARKET",
-}
-
-DEFAULT_MARKET = {
-    "name": "مارکت 🎯",
-    "price": 100.0,
-    "support": 95.0,
-    "resistance": 108.0,
-}
-
-# ================= RISK ENGINE (integrated) =================
-
-def normalize_symbol(text: str) -> str:
-    t = text.strip().lower()
-    t = re.sub(r"\s*/\s*", "", t)
-    return ALIASES.get(t, t.upper())
-
-
-def get_market_info(symbol_raw: str) -> dict:
-    """Return market data for any symbol. Tries Binance API for crypto."""
-    symbol = normalize_symbol(symbol_raw)
-
-    if symbol == "MARKET":
-        return dict(DEFAULT_MARKET)
-
-    if symbol == "XAUUSD":
-        return {"name": "طلا (XAUUSD)", "price": 2650.0, "support": 2600.0, "resistance": 2720.0}
-
-    # Try live price from Binance
-    try:
-        r = requests.get("https://api.binance.com/api/v3/ticker/24hr",
-                         params={"symbol": symbol}, timeout=5)
-        if r.status_code == 200:
-            data = r.json()
-            price = float(data["lastPrice"])
-            high = float(data["highPrice"])
-            low = float(data["lowPrice"])
-            return {
-                "name": f"نماد شناسایی شد: {symbol}",
-                "price": price,
-                "support": round(low * 0.99, 6),
-                "resistance": round(high * 1.01, 6),
-            }
-    except Exception:
-        pass
-
-    # Fallback: generic standard framework for unknown symbols
-    return {
-        "name": f"نماد شناسایی شد: {symbol}",
-        "price": 100.0,
-        "support": 95.0,
-        "resistance": 108.0,
-    }
-
-
-def generate_setup(info: dict) -> str:
-    """Generate a trade setup with entry ladders, SL, and TP (min R:R 1:2)."""
-    price = info["price"]
-    support = info["support"]
-    resistance = info["resistance"]
-    name = info["name"]
-
-    # Long setup (laddered entry near support)
-    entry1 = support * 1.005
-    entry2 = support * 0.995
-    stop_loss = support * 0.97          # ~3% below support
-    target = entry1 + (entry1 - stop_loss) * 2   # forces R:R >= 1:2
-
-    risk_pct = abs((entry1 - stop_loss) / entry1) * 100
-
-    msg = (
-        f"🔍 {name}\n"
-        f"💵 قیمت فعلی: {price:.4f}\n\n"
-        f"📍 ورود پله ۱: {entry1:.4f}\n"
-        f"📍 ورود پله ۲: {entry2:.4f}\n"
-        f"🛑 حد ضرر (SL): {stop_loss:.4f}\n"
-        f"🎯 حد سود (TP): {target:.4f}\n"
-        f"⚖️ نسبت ریسک به ریوارد: 1:2 (حداقل)\n"
-        f"📉 ریسک هر معامله: حداکثر 2٪ سرمایه\n"
-        f"📊 ریسک این ستاپ: {risk_pct:.2f}٪\n\n"
-        f"💡 مدیریت سرمایه: با ریسک ۲٪ و فاصله استاپ {risk_pct:.2f}٪، "
-        f"حجم پوزیشن = (2 ÷ {risk_pct:.2f}) از کل سرمایه در هر پله تقسیم شود.\n\n"
-        f"برای ستاپ کامل، «🎯 ستاپ‌های معاملاتی» را بزنید."
-    )
-    return msg
-
-
-def get_risk_management_guideline() -> str:
-    return (
-        "💰 رهنما و قوانین مدیریت سرمایه:\n\n"
-        "1️⃣ ریسک هر معامله: حداکثر ۲٪ کل سرمایه\n"
-        "2️⃣ ریسک کل پرتفوی (همه پوزیشن‌های باز): حداکثر ۶٪\n"
-        "3️⃣ نسبت ریسک به ریوارد: حداقل 1:2\n"
-        "4️⃣ ورود پله‌ای: ۵۰٪ پله اول، ۵۰٪ پله دوم\n"
-        "5️⃣ پس از ۳ استاپ متوالی، ۲۴ ساعت معامله نکنید\n"
-        "6️⃣ هیچ‌گاه بدون حد ضرر وارد نشوید\n"
-        "7️⃣ سودهای پله‌ای را برداشت کنید (Trail Stop)"
-    )
-
-# ================= TELEGRAM =================
-
-KEYBOARD = {
-    "keyboard": [
-        [{"text": "🎯 ستاپ‌های معاملاتی"}, {"text": "📊 تحلیل تکنیکال"}],
-        [{"text": "💰 مدیریت ریسک"}, {"text": "📋 راهنما و قوانین"}],
-    ],
-    "resize_keyboard": True,
-}
-
-WELCOME = (
-    "👋 به ربات Robo7Alvand خوش آمدید!\n\n"
-    "🔍 نام هر نمادی را تایپ کنید (فارسی یا انگلیسی):\n"
-    "مثال: بیت‌کوین، ترون، دوج، طلا، BTC، TRX ...\n\n"
-    "یا از دکمه‌های زیر استفاده کنید."
+import asyncio
+import logging
+from dataclasses import dataclass
+from aiohttp import web
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
 )
 
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-def send_message(chat_id: str, text: str, keyboard=True):
-    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
-    if keyboard:
-        payload["reply_markup"] = KEYBOARD
-    try:
-        requests.post(f"{TELEGRAM_API}/sendMessage", json=payload, timeout=10)
-    except Exception as e:
-        print(f"[send_message error] {e}")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "GAPGPTMASKTOKENbj8jlkcwyaX0X")
+PORT = int(os.environ.get("PORT", 8080))
 
+USER_MODES = {}
 
-def handle_update(update: dict):
-    msg = update.get("message")
-    if not msg:
+# ================== موتور ریسک و تحلیل ==================
+
+@dataclass
+class TradeSetup:
+    entry: float
+    stop_loss: float
+    take_profit_1: float
+    take_profit_2: float
+    risk_reward: str
+    note: str
+
+def generate_setup(symbol: str, current_price: float, support: float, resistance: float) -> TradeSetup:
+    entry = round(support * 1.005, 4)
+    stop_loss = round(support * 0.985, 4)
+    risk_amount = entry - stop_loss
+    tp1 = round(entry + (risk_amount * 2), 4)
+    tp2 = round(entry + (risk_amount * 3), 4)
+    return TradeSetup(
+        entry=entry,
+        stop_loss=stop_loss,
+        take_profit_1=tp1,
+        take_profit_2=tp2,
+        risk_reward="1:2 (TP1) - 1:3 (TP2)",
+        note="ورود فقط پله‌ای نزدیک حمایت. عدم ورود در هیجان (FOMO). حفظ سرمایه اولویت اول است."
+    )
+
+def get_risk_management_guideline(text: str = "") -> str:
+    capital = 100.0
+    if "بالای" in text or "500" in text or "۵۰۰" in text:
+        capital = 1000.0
+    elif "200" in text or "۲۰۰" in text:
+        capital = 300.0
+    elif "50" in text or "۵۰" in text:
+        capital = 100.0
+    risk_amount = capital * 0.02
+    return (
+        "🛡 راهنمای مدیریت ریسک Robo7Alvand:\n\n"
+        f"💵 سرمایه تخمینی: {int(capital)} دلار\n"
+        f"⚠️ حداکثر ریسک هر معامله (۲٪): {int(risk_amount)} دلار\n"
+        "📊 حداکثر پوزیشن باز همزمان: ۲ عدد\n"
+        "🪜 روش ورود: پله‌ای (۵۰٪ در تریگر حمایت، ۵۰٪ پس از تاییدیه کندلی)\n\n"
+        "⚖️ قوانین غیرقابل تغییر:\n"
+        "۱. حداقل نسبت R:R برابر 1:2\n"
+        "۲. بدون مارتینگل و بدون میانگین کم کردن در ضرر\n"
+        "۳. پایبندی به استاپ لاس تحت هر شرایط"
+    )
+
+BASE_MARKET_DATA = {
+    "BTC": {"name": "بیت‌کوین (BTC/USDT)", "price": 64200, "sup": 62800, "res": 65500, "trend": "خنثی متمایل به صعودی"},
+    "ETH": {"name": "اتریوم (ETH/USDT)", "price": 2650, "sup": 2520, "res": 2720, "trend": "استراحت روی حمایت"},
+    "SOL": {"name": "سولانا (SOL/USDT)", "price": 148, "sup": 138, "res": 155, "trend": "صعودی پرشتاب"},
+    "TRX": {"name": "ترون (TRX/USDT)", "price": 0.152, "sup": 0.146, "res": 0.158, "trend": "تثبیت روند"},
+    "TON": {"name": "تون‌کوین (TON/USDT)", "price": 5.65, "sup": 5.20, "res": 6.10, "trend": "انباشت"},
+    "DOGE": {"name": "دوج‌کوین (DOGE/USDT)", "price": 0.108, "sup": 0.098, "res": 0.118, "trend": "نوسانی"},
+    "ADA": {"name": "کاردانو (ADA/USDT)", "price": 0.365, "sup": 0.345, "res": 0.385, "trend": "فاز تجمیع"},
+    "XAUUSD": {"name": "انس طلا جهانی (XAU/USD)", "price": 2625, "sup": 2600, "res": 2650, "trend": "نوسان بالا در سقف تاریخی"},
+    "XAGUSD": {"name": "انس نقره جهانی (XAG/USD)", "price": 31.2, "sup": 30.5, "res": 32.4, "trend": "صعودی"},
+    "OIL": {"name": "نفت خام (WTI)", "price": 71.5, "sup": 69.2, "res": 73.8, "trend": "نوسانی"},
+    "EURUSD": {"name": "یورو به دلار (EUR/USD)", "price": 1.114, "sup": 1.108, "res": 1.121, "trend": "خنثی"},
+}
+
+ALIASES = {
+    "بیت کوین": "BTC", "بیتکوین": "BTC", "btc": "BTC",
+    "اتریوم": "ETH", "eth": "ETH",
+    "سولانا": "SOL", "sol": "SOL",
+    "ترون": "TRX", "tron": "TRX", "trx": "TRX",
+    "تون": "TON", "تون کوین": "TON", "ton": "TON",
+    "دوج": "DOGE", "دوج کوین": "DOGE", "doge": "DOGE",
+    "کاردانو": "ADA", "ada": "ADA",
+    "طلا": "XAUUSD", "انس طلا": "XAUUSD", "gold": "XAUUSD", "xauusd": "XAUUSD",
+    "نقره": "XAGUSD", "انس نقره": "XAGUSD", "silver": "XAGUSD", "xagusd": "XAGUSD",
+    "نفت": "OIL", "oil": "OIL", "wti": "OIL",
+    "یورو": "EURUSD", "eurusd": "EURUSD",
+}
+
+def get_market_info(raw_text: str):
+    clean = raw_text.strip().lower()
+    symbol_key = ALIASES.get(clean, raw_text.strip().upper())
+    if symbol_key in BASE_MARKET_DATA:
+        return symbol_key, BASE_MARKET_DATA[symbol_key]
+    return symbol_key, {
+        "name": f"مارکت {symbol_key}",
+        "price": 100.0,
+        "sup": 95.0,
+        "res": 108.0,
+        "trend": "تحلیل داینامیک و نوسانی"
+    }
+
+# ================== کیبوردها ==================
+
+def main_menu_keyboard():
+    return ReplyKeyboardMarkup([
+        [KeyboardButton("🎯 ستاپ‌های معاملاتی"), KeyboardButton("📊 تحلیل تکنیکال")],
+        [KeyboardButton("💰 مدیریت ریسک"), KeyboardButton("📋 راهنما و قوانین")]
+    ], resize_keyboard=True)
+
+def symbols_keyboard():
+    return ReplyKeyboardMarkup([
+        [KeyboardButton("BTC"), KeyboardButton("ETH"), KeyboardButton("SOL")],
+        [KeyboardButton("TRX"), KeyboardButton("TON"), KeyboardButton("DOGE")],
+        [KeyboardButton("طلا"), KeyboardButton("نقره"), KeyboardButton("نفت")],
+        [KeyboardButton("🔙 بازگشت به منوی اصلی")]
+    ], resize_keyboard=True)
+
+def capital_keyboard():
+    return ReplyKeyboardMarkup([
+        [KeyboardButton("زیر ۵۰ دلار"), KeyboardButton("۵۰ تا ۲۰۰ دلار")],
+        [KeyboardButton("۲۰۰ تا ۵۰۰ دلار"), KeyboardButton("بالای ۵۰۰ دلار")],
+        [KeyboardButton("🔙 بازگشت به منوی اصلی")]
+    ], resize_keyboard=True)
+
+# ================== هندلرهای پیام ==================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    USER_MODES[update.effective_user.id] = None
+    await update.message.reply_text(
+        "سلام ابی جان! 🦅\n"
+        "دستیار معاملاتی Robo7Alvand آنلاین و آماده است.\n\n"
+        "یک گزینه را انتخاب کنید یا نام هر نمادی را مستقیماً تایپ کنید:",
+        reply_markup=main_menu_keyboard()
+    )
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").strip()
+    user_id = update.effective_user.id
+    mode = USER_MODES.get(user_id)
+
+    # 1. بازگشت
+    if "بازگشت" in text:
+        USER_MODES[user_id] = None
+        await update.message.reply_text("به منوی اصلی برگشتید:", reply_markup=main_menu_keyboard())
         return
-    chat_id = str(msg["chat"]["id"])
-    text = (msg.get("text") or "").strip()
 
-    if text.startswith("/start"):
-        send_message(chat_id, WELCOME)
+    # 2. منوهای اصلی (بررسی کلمات کلیدی تا ایموجی‌ها شرط را نشکنند)
+    if "ستاپ" in text:
+        USER_MODES[user_id] = "SETUP"
+        await update.message.reply_text(
+            "🎯 **بخش ستاپ معاملاتی**\n\nنماد مورد نظر را انتخاب کنید یا نام آن را تایپ کنید (مثلاً TRX یا ترون):",
+            reply_markup=symbols_keyboard()
+        )
         return
 
-    if "مدیریت ریسک" in text or "مدیریت" in text:
-        send_message(chat_id, get_risk_management_guideline())
+    if "تحلیل" in text:
+        USER_MODES[user_id] = "ANALYSIS"
+        await update.message.reply_text(
+            "📊 **بخش تحلیل تکنیکال**\n\nنماد مورد نظر را انتخاب یا تایپ کنید:",
+            reply_markup=symbols_keyboard()
+        )
+        return
+
+    if "مدیریت" in text or "ریسک" in text:
+        USER_MODES[user_id] = "RISK"
+        await update.message.reply_text("میزان سرمایه معاملاتی خود را انتخاب کنید:", reply_markup=capital_keyboard())
         return
 
     if "راهنما" in text or "قوانین" in text:
-        send_message(chat_id, WELCOME + "\n\n" + get_risk_management_guideline())
+        await update.message.reply_text(
+            "📋 **قوانین و راهنمای Robo7Alvand:**\n\n"
+            "۱. تمام ستاپ‌ها دارای نسبت سود به ریسک حداقل ۱ به ۲ هستند.\n"
+            "۲. ورودها پله‌ای و فقط در نزدیکی سطوح حمایتی معتبر انجام می‌شود.\n"
+            "۳. استفاده از مارتینگل و خریدهای هیجانی ممنوع است.",
+            reply_markup=main_menu_keyboard()
+        )
         return
 
-    if "تحلیل تکنیکال" in text or "تکنیکال" in text:
-        info = get_market_info("market")
-        send_message(chat_id, generate_setup(info))
+    # 3. پاسخ در وضعیت‌های انتخابی
+    if mode == "SETUP":
+        sym_key, info = get_market_info(text)
+        s = generate_setup(sym_key, info["price"], info["sup"], info["res"])
+        await update.message.reply_text(
+            f"🎯 ستاپ معاملاتی: {info['name']}\n\n"
+            f"📍 قیمت مبنا: {info['price']}\n"
+            f"🟢 نقطه ورود پله‌ای: {s.entry}\n"
+            f"🔴 حد ضرر (SL): {s.stop_loss}\n"
+            f"🎯 هدف اول (TP1): {s.take_profit_1}\n"
+            f"🎯 هدف دوم (TP2): {s.take_profit_2}\n"
+            f"⚖️ نسبت R:R: {s.risk_reward}\n\n"
+            f"⚠️ {s.note}"
+        )
         return
 
-    if "ستاپ" in text or "معاملاتی" in text:
-        info = get_market_info("market")
-        send_message(chat_id, generate_setup(info))
+    if mode == "ANALYSIS":
+        sym_key, info = get_market_info(text)
+        await update.message.reply_text(
+            f"📊 تحلیل تکنیکال: {info['name']}\n\n"
+            f"▫️ قیمت مبنا: {info['price']}\n"
+            f"▫️ حمایت کلیدی: {info['sup']}\n"
+            f"▫️ مقاومت پیش‌رو: {info['res']}\n"
+            f"▫️ وضعیت روند: {info['trend']}\n\n"
+            "💡 استراتژی: منتظر تاییدیه واکنش در حمایت یا تثبیت بالای مقاومت بمانید."
+        )
         return
 
-    # Free-typed symbol (dynamic)
-    info = get_market_info(text)
-    send_message(chat_id, generate_setup(info))
+    if mode == "RISK" or ("دلار" in text):
+        await update.message.reply_text(get_risk_management_guideline(text), reply_markup=main_menu_keyboard())
+        USER_MODES[user_id] = None
+        return
 
+    # 4. تایپ مستقیم نماد در منوی اصلی
+    sym_key, info = get_market_info(text)
+    s = generate_setup(sym_key, info["price"], info["sup"], info["res"])
+    await update.message.reply_text(
+        f"🔎 نماد شناسایی شد: {info['name']}\n"
+        f"💵 قیمت: {info['price']} | حمایت: {info['sup']} | مقاومت: {info['res']}\n\n"
+        f"🟢 ورود ستاپ: {s.entry} | 🔴 حد ضرر: {s.stop_loss}\n"
+        f"🎯 اهداف: {s.take_profit_1} و {s.take_profit_2}",
+        reply_markup=main_menu_keyboard()
+    )
 
-def poll():
-    print("[bot] Long polling started...")
-    offset = 0
+# ================== وب‌سرور سلامت Render ==================
+
+async def health_check(request):
+    return web.Response(text="Robo7Alvand is Live and Healthy!", status=200)
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", health_check)
+    app.router.add_get("/health", health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+    logger.info("Health server running on port %s", PORT)
+
+async def main():
+    await start_web_server()
+    bot_app = Application.builder().token(BOT_TOKEN).build()
+    bot_app.add_handler(CommandHandler("start", start))
+    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    await bot_app.initialize()
+    await bot_app.start()
+    await bot_app.updater.start_polling()
+    logger.info("Bot polling is active...")
     while True:
-        try:
-            r = requests.get(f"{TELEGRAM_API}/getUpdates",
-                             params={"offset": offset, "timeout": 30}, timeout=35)
-            data = r.json()
-            for upd in data.get("result", []):
-                offset = upd["update_id"] + 1
-                handle_update(upd)
-        except Exception as e:
-            print(f"[poll error] {e}")
-            time.sleep(3)
-
-# ================= FLASK HEALTH SERVER =================
-app = Flask(__name__)
-
-
-@app.route("/")
-@app.route("/health")
-def health():
-    return {"status": "ok", "bot": "Robo7Alvand", "version": "2.1-monolithic"}, 200
-
-
-def run_flask():
-    app.run(host="0.0.0.0", port=PORT)
-
+        await asyncio.sleep(3600)
 
 if __name__ == "__main__":
-    threading.Thread(target=poll, daemon=True).start()
-    run_flask()
+    asyncio.run(main())
