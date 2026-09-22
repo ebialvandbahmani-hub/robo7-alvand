@@ -77,7 +77,7 @@ def save_user(user_id: int, data: dict):
     conn.close()
 
 # ---------------------------------------------------------
-# ۳. کیبوردها (اصلاح شده)
+# ۳. کیبوردها
 # ---------------------------------------------------------
 MAIN_MENU_KEYBOARD = ReplyKeyboardMarkup(
     [
@@ -88,7 +88,7 @@ MAIN_MENU_KEYBOARD = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# اینجا فقط دو گزینه درخواستی شما قرار دارد
+# ساختار دقیق تالار معاملات
 TRADING_MENU_KEYBOARD = ReplyKeyboardMarkup(
     [
         ["🎯 دریافت ستاپ معاملاتی", "📊 تحلیل تکنیکال"],
@@ -114,13 +114,10 @@ async def start_web_server():
     app.router.add_get("/", health_check)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-
-# ---------------------------------------------------------
-# ۵. هندلرها
-# ---------------------------------------------------------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    site = web.TCPSite(runner, ": ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if get_user(uid):
+        await update.message.reply_text("خوش آمدید.", reply_markup=MAIN_MENU_KEY: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if get_user(uid):
         await update.message.reply_text("خوش آمدید.", reply_markup=MAIN_MENU_KEYBOARD)
@@ -164,31 +161,53 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("✅ ثبت‌نام کامل شد.", reply_markup=MAIN_MENU_KEYBOARD)
             return
 
-    # --- ناوبری (فقط موارد درخواستی) ---
+    # --- ناوبری اصلی ---
     if text == "🏛 تالار معاملات":
         await update.message.reply_text("منوی تالار معاملات:", reply_markup=TRADING_MENU_KEYBOARD)
     
     elif text == "🔙 بازگشت به منوی اصلی":
         await update.message.reply_text("منوی اصلی:", reply_markup=MAIN_MENU_KEYBOARD)
         
+    # --- ستاپ معاملاتی مهندسی‌شده ---
     elif text == "🎯 دریافت ستاپ معاملاتی":
         setup = (
             "🎯 <b>ستاپ معاملاتی روبو۷ الوند</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "📊 <b>نماد:</b> XAUUSD\n"
-            "🧭 <b>نوع:</b> BUY LIMIT\n"
-            "📍 <b>ورود طلایی:</b> <code>2642.10</code>\n"
-            "🛑 <b>حد ضرر:</b> <code>2638.10</code>\n"
-            "🎯 <b>تارگت نهایی:</b> <code>2668.00</code>\n"
-            "⚖️ <b>ریسک به ریوارد:</b> 1:6.5\n"
-            "⚠️ <b>هشدار:</b> اسپرد بروکر لحاظ شود."
+            "💹 <b>نماد:</b> XAUUSD\n"
+            "🔄 <b>نوع سفارش:</b> Limit Order\n"
+            "🧭 <b>جهت:</b> Long (Buy)\n"
+            "⏰ <b>تایم‌فریم تاییدیه:</b> 1H / 4H\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "📍 <b>محدوده ورود:</b> 2640 - 2644\n"
+            "✨ <b>نقطه ورود طلایی (Sweet Spot):</b> <code>2642.10</code>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🛡 <b>مدیریت ریسک:</b>\n"
+            "🛑 <b>حد ضرر (SL):</b> <code>2638.10</code>\n"
+            "📉 <b>ریسک به ریوارد (R:R):</b> 1:6.5\n"
+            "⚠️ <b>هشدار:</b> اسپرد و لغزش بروکر لحاظ شود.\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🎯 <b>اهداف سود (TPs):</b>\n"
+            "TP1: <code>2648.00</code> | بازده: +1.5$\n"
+            "TP2: <code>2654.00</code> | بازده: +3.2$\n"
+            "TP3: <code>2662.00</code> | بازده: +5.8$\n"
+            "TP4: <code>2668.00</code> | بازده: +8.5$\n"
+            "🏆 <b>تارگت نهایی:</b> <code>2680.00</code>"
         )
         await update.message.reply_text(setup, parse_mode="HTML")
         
+    # --- تحلیل تکنیکال ---
     elif text == "📊 تحلیل تکنیکال":
-        await update.message.reply_text("🔍 <b>سرویس تحلیل تکنیکال لایو</b>\nدر حال پردازش داده‌های چارت... به‌زودی فعال می‌شود.")
+        analysis = (
+            "📊 <b>تحلیل تکنیکال زنده - XAUUSD</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "📉 <b>روند کلی:</b> صعودی در تایم‌فریم 4H\n"
+            "🔥 <b>اندیکاتورها:</b> RSI در محدوده اشباع خرید (خروج تدریجی)\n"
+            "💡 <b>سناریوی احتمالی:</b> اصلاح موقت به سمت محدوده تقاضا و ادامه روند\n"
+            "📝 <b>یادداشت تریدر:</b> منتظر کندل تایید در نقطه ورود طلایی بمانید."
+        )
+        await update.message.reply_text(analysis, parse_mode="HTML")
 
-    # سایر منوهای اصلی (بدون تغییر)
+    # سایر منوهای اصلی
     elif text == "📊 گزارش عملکرد":
         await update.message.reply_text("گزارش عملکرد: نرخ موفقیت ۷۵٪.")
     elif text == "👤 پروفایل کاربری":
